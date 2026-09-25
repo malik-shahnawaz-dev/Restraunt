@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Clock3, Search, Star, TrendingUp } from 'lucide-react'
-import { MENU_ITEMS } from '../../data/menu.js'
 import { useCart } from '../../context/CartContext.jsx'
 import { useToast } from '../../context/ToastContext.jsx'
 import { useData } from '../../context/MenuContext.jsx'
@@ -112,7 +111,7 @@ export default function SearchOverlay({ open, onClose }) {
                         onClick={() => go(item._id || item.id)}
                         className="flex w-full cursor-pointer items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition hover:bg-beige"
                       >
-                            <img src={item.image} alt="" className="h-11 w-11 rounded-lg object-cover" />
+                            <img src={item.image || '/images/kitchen.jpg'} alt="" className="h-11 w-11 rounded-lg object-cover" />
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-sm font-medium text-ink">{item.name}</span>
                               <span className="text-[12.5px] text-warm">${item.price.toFixed(2)}</span>
@@ -145,7 +144,7 @@ export default function SearchOverlay({ open, onClose }) {
                         onKeyDown={(e) => e.key === 'Enter' && go(item._id || item.id)}
                         className="flex w-full cursor-pointer items-center gap-3 rounded-xl px-2.5 py-2.5 transition hover:bg-beige"
                       >
-                        <img src={item.image} alt="" className="h-12 w-12 rounded-lg object-cover" />
+                        <img src={item.image || '/images/kitchen.jpg'} alt="" className="h-12 w-12 rounded-lg object-cover" />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium text-ink">{item.name}</p>
                           <p className="flex items-center gap-2 text-[12.5px] text-warm">

@@ -7,11 +7,14 @@ import {
   Payment,
   Notification,
   Setting,
+  Review,
   nextOrderNumber,
+  pushTimeline,
 } from '../models/index.js'
 import { protect } from '../middleware/auth.js'
+import { Types } from '../db/orm.js'
 import { ApiError } from '../middleware/error.js'
-import { computeTotals, chargePayment, sizeDelta } from '../utils/pricing.js'
+import { computeTotals, chargePayment } from '../utils/pricing.js'
 import { sendEmail, templates } from '../utils/email.js'
 
 const router = Router()
@@ -93,6 +96,7 @@ router.post('/', protect, async (req, res, next) => {
         customerNotes: notes || '',
         contact: { name: contact?.name || `${req.user.firstName} ${req.user.lastName}`, email: contact?.email || req.user.email, phone: contact?.phone || req.user.phone },
         etaMinutes: fulfillment === 'pickup' ? 20 : 40,
+        timeline: [{ status: 'Cancelled', at: new Date(), note: 'Payment failed' }],
       })
       await Payment.create({
         order: orderFailed._id,
@@ -124,6 +128,7 @@ router.post('/', protect, async (req, res, next) => {
         phone: contact?.phone || req.user.phone,
       },
       etaMinutes: fulfillment === 'pickup' ? 20 : 40,
+      timeline: [{ status: settings.autoConfirm ? 'Confirmed' : 'Pending', at: new Date() }],
     })
 
     await Payment.create({
@@ -179,6 +184,127 @@ router.get('/:id', protect, async (req, res, next) => {
   try {
     const order = await resolveOrder(req.params.id, req.user)
     res.json({ order })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/* ═════════ Customer: cancel an order ═════════ */
+router.post('/:id/cancel', protect, async (req, res, next) => {
+  try {
+    const order = await resolveOrder(req.params.id, req.user)
+    if (['Delivered', 'Cancelled'].includes(order.orderStatus)) {
+      throw new ApiError(400, `This order is already ${order.orderStatus.toLowerCase()}.`)
+    }
+    if (order.orderStatus === 'Out for Delivery') {
+      throw new ApiError(400, 'The rider is already on the way — call the restaurant to cancel.')
+    }
+    order.orderStatus = 'Cancelled'
+    order.cancelReason = req.body.reason || 'Cancelled by customer'
+    pushTimeline(order, 'Cancelled', order.cancelReason)
+    await order.save()
+
+    if (order.paymentStatus === 'paid') {
+      order.paymentStatus = 'refunded'
+      await order.save()
+      await Payment.create({
+        order: order._id,
+        user: order.user,
+        method: order.paymentMethod,
+        status: 'refunded',
+        amount: order.total,
+        cardLast4: null,
+      })
+    }
+    await Notification.create({
+      user: order.user,
+      type: 'order',
+      title: `Order #${order.orderNumber} cancelled`,
+      message: `Your order was cancelled${order.cancelReason ? ` — ${order.cancelReason}` : ''}.`,
+    })
+    res.json({ order, message: 'Order cancelled.' })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/* ═════════ Customer: reorder (push previous items into the cart) ═════════ */
+router.post('/:id/reorder', protect, async (req, res, next) => {
+  try {
+    const order = await resolveOrder(req.params.id, req.user)
+    let cart = await Cart.findOne({ user: req.user._id })
+    if (!cart) cart = await Cart.create({ user: req.user._id, items: [] })
+
+    let added = 0
+    let skipped = 0
+    for (const line of order.items) {
+      const menuItem = await MenuItem.findById(line.menuItem)
+      if (!menuItem || !menuItem.available) {
+        skipped += 1
+        continue
+      }
+      const key = [menuItem._id, line.size || 'regular', (line.addons || []).map((a) => a.id).sort().join('+'), ''].join('|')
+      const existing = cart.items.find((i) => i.key === key)
+      if (existing) existing.qty = Math.min(99, existing.qty + line.qty)
+      else
+        cart.items.push({
+          key,
+          menuItem: menuItem._id,
+          name: menuItem.name,
+          image: menuItem.image,
+          price: menuItem.price,
+          qty: line.qty,
+          size: line.size || 'regular',
+          addons: line.addons || [],
+          notes: '',
+        })
+      added += 1
+    }
+    await cart.save()
+    const totals = computeTotals(cart.items, cart.coupon?.code ? cart.coupon : null)
+    res.json({ cart, totals, added, skipped })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/* ═════════ Customer: rate a delivered order ═════════ */
+router.post('/:id/review', protect, async (req, res, next) => {
+  try {
+    const order = await resolveOrder(req.params.id, req.user)
+    if (order.orderStatus !== 'Delivered') throw new ApiError(400, 'You can review an order once it has been delivered.')
+    const rating = Number(req.body.rating)
+    const text = String(req.body.text || '').trim()
+    if (!rating || rating < 1 || rating > 5) throw new ApiError(400, 'Choose a rating between 1 and 5.')
+    if (text.length < 10) throw new ApiError(400, 'Tell us a little more (at least 10 characters).')
+
+    const review = await Review.create({
+      user: req.user._id,
+      order: order._id,
+      menuItem: req.body.menuItemId || order.items[0]?.menuItem,
+      name: `${req.user.firstName} ${req.user.lastName}`,
+      initials: (req.user.firstName[0] || '') + (req.user.lastName[0] || ''),
+      rating,
+      text,
+      dish: req.body.dish || order.items[0]?.name,
+      status: 'published',
+    })
+    order.rated = true
+    await order.save()
+
+    if (review.menuItem) {
+      const agg = await Review.aggregate([
+        { $match: { menuItem: new Types.ObjectId(String(review.menuItem)), status: 'published' } },
+        { $group: { _id: null, avg: { $avg: '$rating' }, count: { $sum: 1 } } },
+      ])
+      if (agg[0]) {
+        await MenuItem.findByIdAndUpdate(review.menuItem, {
+          rating: Math.round(agg[0].avg * 10) / 10,
+          reviewCount: agg[0].count,
+        })
+      }
+    }
+    res.status(201).json({ review })
   } catch (e) {
     next(e)
   }

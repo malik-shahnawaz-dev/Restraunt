@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Check, Clock3, MapPin, Phone, Store, Truck, UtensilsCrossed, PackageSearch } from 'lucide-react'
+import { Check, Clock3, MapPin, Phone, Printer, Store, Truck, UtensilsCrossed, PackageSearch } from 'lucide-react'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import Button from '../components/ui/Button.jsx'
 import { EmptyState, Reveal, Spinner } from '../components/ui/Motion.jsx'
 import { restaurant } from '../data/menu.js'
+import { useData } from '../context/MenuContext.jsx'
 import { api } from '../lib/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useToast } from '../context/ToastContext.jsx'
@@ -90,6 +91,7 @@ function Timeline({ activeIndex, cancelled }) {
 export default function OrderTrackingPage() {
   const { id } = useParams()
   const { user, booting } = useAuth()
+  const { settings } = useData()
   const toast = useToast()
   const [order, setOrder] = useState(null)
   const [error, setError] = useState(null)
@@ -263,10 +265,10 @@ export default function OrderTrackingPage() {
                     </span>
                     <span>
                       <span className="block text-[11px] font-semibold tracking-[0.14em] text-warm uppercase">Restaurant</span>
-                      <span className="font-medium text-ink">{restaurant.name}</span>
-                      <span className="block text-[13px] text-warm">{restaurant.address}</span>
-                      <a href={`tel:${restaurant.phone.replace(/\s/g, '')}`} className="mt-1 inline-flex items-center gap-1.5 text-[13px] font-medium text-clay hover:underline">
-                        <Phone size={12} /> {restaurant.phone}
+                      <span className="font-medium text-ink">{settings.name || restaurant.name}</span>
+                      <span className="block text-[13px] text-warm">{settings.address || restaurant.address}</span>
+                      <a href={`tel:${(settings.phone || restaurant.phone).replace(/\s/g, '')}`} className="mt-1 inline-flex items-center gap-1.5 text-[13px] font-medium text-clay hover:underline">
+                        <Phone size={12} /> {settings.phone || restaurant.phone}
                       </a>
                     </span>
                   </div>
@@ -303,6 +305,9 @@ export default function OrderTrackingPage() {
                   Order again
                 </Button>
               </Link>
+              <Button variant="ghost" className="w-full" onClick={() => window.print()}>
+                <Printer size={15} /> Print receipt
+              </Button>
               <Link to="/contact">
                 <Button variant="ghost" className="w-full">
                   Need help? Contact us

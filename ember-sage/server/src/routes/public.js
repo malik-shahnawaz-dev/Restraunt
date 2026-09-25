@@ -8,9 +8,11 @@ import {
   Coupon,
 } from '../models/index.js'
 import { protect, optionalProtect } from '../middleware/auth.js'
+import { Types } from '../db/orm.js'
 import { ApiError } from '../middleware/error.js'
 import { sendEmail, templates } from '../utils/email.js'
 import { computeTotals } from '../utils/pricing.js'
+import { logAudit } from '../utils/audit.js'
 
 const router = Router()
 
@@ -49,7 +51,7 @@ router.post('/reviews', protect, async (req, res, next) => {
 
 async function recalcRating(menuItemId) {
   const agg = await Review.aggregate([
-    { $match: { menuItem: Review.schema.path('menuItem').cast(menuItemId), status: 'published' } },
+    { $match: { menuItem: new Types.ObjectId(menuItemId), status: 'published' } },
     { $group: { _id: null, avg: { $avg: '$rating' }, count: { $sum: 1 } } },
   ])
   if (agg[0]) {
@@ -85,8 +87,29 @@ router.post('/reservations', optionalProtect, async (req, res, next) => {
 
 router.get('/reservations/mine', protect, async (req, res, next) => {
   try {
-    const reservations = await Reservation.find({ user: req.user._id }).sort({ createdAt: -1 })
+    const reservations = await Reservation.find({ user: req.user._id }).sort({ date: -1, time: -1 })
     res.json({ reservations })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/** Customer cancels their own table request (only while it is still pending/confirmed). */
+router.patch('/reservations/:id/cancel', protect, async (req, res, next) => {
+  try {
+    const reservation = await Reservation.findById(req.params.id)
+    if (!reservation) throw new ApiError(404, 'Reservation not found.')
+    if (String(reservation.user) !== String(req.user._id)) throw new ApiError(403, 'That reservation is not yours.')
+    if (reservation.status === 'Cancelled') throw new ApiError(409, 'That reservation is already cancelled.')
+    if (reservation.status === 'Seated' || reservation.status === 'Completed')
+      throw new ApiError(409, 'This visit is already underway — call the restaurant instead.')
+
+    reservation.status = 'Cancelled'
+    reservation.cancelledAt = new Date()
+    reservation.cancelReason = 'Cancelled by guest'
+    await reservation.save()
+    await logAudit(req, 'cancel:reservation', 'reservation', `${reservation.date} at ${reservation.time}`, reservation._id)
+    res.json({ reservation, message: 'Reservation cancelled.' })
   } catch (e) {
     next(e)
   }

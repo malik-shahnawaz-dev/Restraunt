@@ -5,12 +5,18 @@ import {
   BarChart3,
   Bell,
   ChevronDown,
+  FileText,
+  HelpCircle,
+  Images,
+  Inbox,
   LayoutDashboard,
   LogOut,
+  Mail,
   Menu as MenuIcon,
   Percent,
   MessageSquareHeart,
   CalendarDays,
+  ScrollText,
   Users,
   UtensilsCrossed,
   ClipboardList,
@@ -32,6 +38,15 @@ const NAV = [
   { to: '/admin/reservations', label: 'Reservations', icon: CalendarDays },
   { to: '/admin/reviews', label: 'Reviews', icon: MessageSquareHeart },
   { to: '/admin/coupons', label: 'Coupons', icon: Percent },
+  { group: 'Content (CMS)' },
+  { to: '/admin/content', label: 'Site Content', icon: FileText },
+  { to: '/admin/gallery', label: 'Gallery', icon: Images },
+  { to: '/admin/faqs', label: 'FAQs', icon: HelpCircle },
+  { to: '/admin/media', label: 'Media', icon: Images },
+  { to: '/admin/messages', label: 'Inbox', icon: Inbox },
+  { to: '/admin/subscribers', label: 'Newsletter', icon: Mail },
+  { to: '/admin/activity', label: 'Activity Log', icon: ScrollText },
+  { group: 'Insights' },
   { to: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/admin/settings', label: 'Settings', icon: Settings },
 ]
@@ -63,7 +78,12 @@ export default function AdminLayout() {
       </div>
       <p className="px-6 pb-2 text-[10.5px] font-semibold tracking-[0.2em] text-warm uppercase">Manage</p>
       <ul className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
-        {NAV.map((n) => (
+        {NAV.map((n, index) =>
+          n.group ? (
+            <li key={n.group} className={`px-4 text-[10px] font-semibold tracking-[0.18em] text-warm-light uppercase ${index === 0 ? '' : 'mt-5'}`}>
+              {n.group}
+            </li>
+          ) : (
           <li key={n.to}>
             <NavLink
               to={n.to}
@@ -78,7 +98,8 @@ export default function AdminLayout() {
               {n.label}
             </NavLink>
           </li>
-        ))}
+          ),
+        )}
       </ul>
       <div className="border-t border-ink/8 p-4">
         <Link

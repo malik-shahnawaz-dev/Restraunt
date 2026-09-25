@@ -1,10 +1,18 @@
 import { motion } from 'framer-motion'
-import { REVENUE_SERIES, ORDERS_BY_CATEGORY, POPULAR_DISHES } from '../../data/site.js'
 
 const ease = [0.22, 1, 0.36, 1]
 
-export function RevenueChart({ data = REVENUE_SERIES }) {
-  const series = data?.length ? data : REVENUE_SERIES
+function EmptyChart({ label = 'No data yet' }) {
+  return (
+    <div className="grid h-[180px] place-items-center rounded-xl border border-dashed border-ink/10 bg-beige/30 text-[13px] text-warm">
+      {label}
+    </div>
+  )
+}
+
+export function RevenueChart({ data = [] }) {
+  const series = data?.length ? data : []
+  if (!series.length) return <EmptyChart label="No revenue recorded in this range" />
   const w = 640
   const h = 220
   const pad = { t: 16, r: 12, b: 30, l: 44 }
@@ -75,13 +83,14 @@ export function RevenueChart({ data = REVENUE_SERIES }) {
   )
 }
 
-export function OrdersBarChart({ data = REVENUE_SERIES }) {
-  const series = data?.length ? data : REVENUE_SERIES
+export function OrdersBarChart({ data = [] }) {
+  const series = data?.length ? data : []
+  if (!series.length) return <EmptyChart label="No orders in this range" />
   const w = 640
   const h = 220
   const pad = { t: 16, r: 12, b: 30, l: 40 }
   const max = Math.max(...series.map((d) => d.orders)) * 1.15
-  const bw = (w - pad.l - pad.r) / REVENUE_SERIES.length
+  const bw = (w - pad.l - pad.r) / series.length
 
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="w-full" role="img" aria-label="Orders per day this week">
@@ -108,7 +117,7 @@ export function OrdersBarChart({ data = REVENUE_SERIES }) {
               x={bx}
               width={bw * 0.6}
               rx="6"
-              fill={i >= 4 ? '#C0522F' : '#17140F'}
+              fill={i % 5 === 4 ? '#C0522F' : '#17140F'}
               initial={{ height: 0, y: h - pad.b }}
               animate={{ height: bh, y: h - pad.b - bh }}
               transition={{ duration: 0.7, delay: i * 0.07, ease }}
@@ -123,7 +132,7 @@ export function OrdersBarChart({ data = REVENUE_SERIES }) {
   )
 }
 
-export function DonutChart({ data = ORDERS_BY_CATEGORY, size = 190 }) {
+export function DonutChart({ data = [], size = 190 }) {
   const total = data.reduce((s, d) => s + d.value, 0)
   const r = 70
   const c = 2 * Math.PI * r
@@ -176,7 +185,8 @@ export function DonutChart({ data = ORDERS_BY_CATEGORY, size = 190 }) {
   )
 }
 
-export function PopularDishes({ data = POPULAR_DISHES }) {
+export function PopularDishes({ data = [] }) {
+  if (!data?.length) return <EmptyChart label="No dishes sold yet" />
   return (
     <ul className="space-y-4">
       {data.map((d, i) => (

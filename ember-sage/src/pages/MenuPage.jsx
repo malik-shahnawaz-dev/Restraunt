@@ -6,13 +6,60 @@ import PageHeader from '../components/layout/PageHeader.jsx'
 import { FoodCard } from '../components/menu/FoodCard.jsx'
 import { CardSkeleton, EmptyState } from '../components/ui/Motion.jsx'
 import Button from '../components/ui/Button.jsx'
-import { SORT_OPTIONS, MENU_TABS, MENU_ITEMS } from '../data/menu.js'
+import { SORT_OPTIONS, MENU_TABS } from '../data/menu.js'
 import { useData } from '../context/MenuContext.jsx'
+import { useAuth } from '../context/AuthContext.jsx'
+import { api } from '../lib/api.js'
+
+/** “Pick up where you left off” — the dishes this account opened most recently. */
+function RecentlyViewed() {
+  const { user } = useAuth()
+  const [items, setItems] = useState([])
+
+  useEffect(() => {
+    if (!user) {
+      setItems([])
+      return
+    }
+    let alive = true
+    api
+      .get('/users/me/recently-viewed')
+      .then((d) => alive && setItems(d.items || []))
+      .catch(() => alive && setItems([]))
+    return () => {
+      alive = false
+    }
+  }, [user])
+
+  if (!user || items.length === 0) return null
+
+  return (
+    <section className="mb-8" aria-labelledby="recent-title">
+      <div className="mb-3 flex items-baseline justify-between gap-4">
+        <h2 id="recent-title" className="font-display text-lg font-medium">
+          Pick up where you left off
+        </h2>
+        <span className="text-[12.5px] text-warm">Saved to your account</span>
+      </div>
+      <div className="no-scrollbar -mx-5 flex gap-4 overflow-x-auto px-5 pb-2 lg:-mx-10 lg:px-10">
+        {items.slice(0, 6).map((item, i) => (
+          <div key={item._id} className="w-[240px] shrink-0">
+            <FoodCard item={item} index={i} />
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
 
 export default function MenuPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const initialCat = searchParams.get('category') || 'all'
-  const { menuItems, menuLoading } = useData()
+  const { menuItems, categories, menuLoading } = useData()
+  // Category tabs come from the live database (Admin → Categories)
+  const TABS = categories.length
+    ? [{ id: 'all', label: 'All' }, ...categories.map((c) => ({ id: c.slug || c.id, label: c.name }))]
+    : MENU_TABS
 
   const [active, setActive] = useState(initialCat)
   const [query, setQuery] = useState('')
@@ -114,10 +161,12 @@ export default function MenuPage() {
       </PageHeader>
 
       <section className="mx-auto max-w-[1440px] px-5 pb-20 lg:px-10 lg:pb-28" aria-label="Menu items">
+        <RecentlyViewed />
+
         {/* Category tabs */}
         <div className="sticky top-[72px] z-40 -mx-5 border-b border-ink/6 bg-cream/92 px-5 py-3 backdrop-blur-xl lg:-mx-10 lg:px-10">
           <div className="no-scrollbar flex gap-2 overflow-x-auto" role="tablist" aria-label="Menu categories">
-            {MENU_TABS.map((tab) => {
+            {TABS.map((tab) => {
               const isActive = active === tab.id
               return (
                 <button
@@ -147,7 +196,7 @@ export default function MenuPage() {
 
         <p className="mt-6 mb-5 text-[13.5px] text-warm" aria-live="polite">
           {loading ? 'Loading dishes…' : `Showing ${items.length} dish${items.length === 1 ? '' : 'es'}`}
-          {active !== 'all' && !loading && ` in ${MENU_TABS.find((t) => t.id === active)?.label}`}
+          {active !== 'all' && !loading && ` in ${TABS.find((t) => t.id === active)?.label}`}
           {query && !loading && ` for “${query}”`}
         </p>
 
@@ -161,7 +210,7 @@ export default function MenuPage() {
           <EmptyState
             icon={SearchX}
             title="No dishes found"
-            message={`Nothing matches “${query || MENU_TABS.find((t) => t.id === active)?.label}”. Try a different search or category.`}
+            message={`Nothing matches “${query || TABS.find((t) => t.id === active)?.label}”. Try a different search or category.`}
             action={
               <Button
                 variant="outline"

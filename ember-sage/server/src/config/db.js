@@ -1,32 +1,18 @@
-import mongoose from 'mongoose'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { connect, disconnect, connection, DB_ENGINE } from '../db/orm.js'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const DB_PATH = path.resolve(__dirname, '../../../.data/mongodb')
-
-let memoryServer = null
-
+/**
+ * Connects the API to its database.
+ *
+ *  • `MONGODB_URI` set  → Mongoose/MongoDB (production, e.g. Atlas)
+ *  • otherwise         → the built-in SQLite store at `SQLITE_PATH`
+ *    (defaults to `.data/ember-sage.sqlite` inside the app folder)
+ */
 export async function connectDB() {
-  let uri = process.env.MONGODB_URI
-
-  if (!uri) {
-    const { default: fs } = await import('node:fs')
-    fs.mkdirSync(DB_PATH, { recursive: true })
-    const { MongoMemoryServer } = await import('mongodb-memory-server')
-    memoryServer = await MongoMemoryServer.create({
-      instance: { dbPath: DB_PATH, storageEngine: 'wiredTiger' },
-    })
-    uri = memoryServer.getUri()
-    console.log('[db] using persistent local MongoDB at', DB_PATH)
-  }
-
-  await mongoose.connect(uri)
-  console.log('[db] connected:', mongoose.connection.name)
-  return memoryServer
+  const uri = process.env.MONGODB_URI || process.env.SQLITE_PATH || ''
+  await connect(uri)
+  console.log(`[db] engine=${DB_ENGINE} database=${connection.name}`)
 }
 
 export async function disconnectDB() {
-  await mongoose.disconnect()
-  if (memoryServer) await memoryServer.stop()
+  await disconnect()
 }
