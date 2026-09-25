@@ -10,7 +10,7 @@ import {
 import { protect, optionalProtect } from '../middleware/auth.js'
 import { Types } from '../db/orm.js'
 import { ApiError } from '../middleware/error.js'
-import { sendEmail, templates } from '../utils/email.js'
+import { sendEmail, templates, RESTAURANT_INBOX } from '../utils/email.js'
 import { computeTotals } from '../utils/pricing.js'
 import { logAudit } from '../utils/audit.js'
 
@@ -78,7 +78,14 @@ router.post('/reservations', optionalProtect, async (req, res, next) => {
       guests: String(guests || '2'),
       notes: notes || '',
     })
+    // The guest gets a confirmation; the restaurant gets a notification it can reply to.
     sendEmail({ to: email, ...templates.reservation(reservation), template: 'reservation' })
+    sendEmail({
+      to: RESTAURANT_INBOX,
+      replyTo: email,
+      ...templates.reservationNotification(reservation),
+      template: 'reservationNotification',
+    })
     res.status(201).json({ reservation })
   } catch (e) {
     next(e)
@@ -121,7 +128,20 @@ router.post('/contact', async (req, res, next) => {
     const { name, email, message } = req.body
     if (!name || !email || !message) throw new ApiError(400, 'All fields are required.')
     if (!/^\S+@\S+\.\S+$/.test(email)) throw new ApiError(400, 'Enter a valid email.')
-    await ContactMessage.create({ name, email, message })
+    const enquiry = await ContactMessage.create({ name, email, message })
+
+    // 1) to the restaurant inbox (reply goes straight back to the guest)
+    // 2) an acknowledgement to the guest, so they know it landed
+    await Promise.all([
+      sendEmail({
+        to: RESTAURANT_INBOX,
+        replyTo: email,
+        ...templates.enquiryNotification(enquiry),
+        template: 'enquiryNotification',
+      }),
+      sendEmail({ to: email, ...templates.enquiryAck(enquiry), template: 'enquiryAck' }),
+    ])
+
     res.status(201).json({ message: 'Thanks — we’ll be in touch within one business day.' })
   } catch (e) {
     next(e)

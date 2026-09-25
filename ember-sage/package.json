@@ -13,7 +13,8 @@
     "start": "NODE_ENV=production node --disable-warning=ExperimentalWarning server/src/index.js",
     "preview": "vite preview",
     "test:api": "NODE_ENV=test node --disable-warning=ExperimentalWarning server/test/api.test.mjs",
-    "test:render": "NODE_ENV=test node --disable-warning=ExperimentalWarning scripts/render-harness.mjs"
+    "test:render": "NODE_ENV=test node --disable-warning=ExperimentalWarning scripts/render-harness.mjs",
+    "mail:test": "node --disable-warning=ExperimentalWarning scripts/mail-test.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

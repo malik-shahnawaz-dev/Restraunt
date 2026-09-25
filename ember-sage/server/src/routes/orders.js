@@ -222,6 +222,9 @@ router.post('/:id/cancel', protect, async (req, res, next) => {
       title: `Order #${order.orderNumber} cancelled`,
       message: `Your order was cancelled${order.cancelReason ? ` — ${order.cancelReason}` : ''}.`,
     })
+    if (order.contact?.email) {
+      sendEmail({ to: order.contact.email, ...templates.orderCancelled(order), template: 'orderCancelled' })
+    }
     res.json({ order, message: 'Order cancelled.' })
   } catch (e) {
     next(e)

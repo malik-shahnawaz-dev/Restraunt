@@ -13,6 +13,7 @@ import { connectDB } from './config/db.js'
 import { notFound, errorHandler } from './middleware/error.js'
 import { UPLOAD_DIR } from './middleware/upload.js'
 import { runSeed } from './utils/seed.js'
+import { verifyTransport } from './utils/email.js'
 
 import authRoutes from './routes/auth.js'
 import userRoutes from './routes/users.js'
@@ -101,6 +102,8 @@ app.use(errorHandler)
 connectDB()
   .then(async () => {
     if (process.env.SEED !== 'false') await runSeed()
+    // Checks the SMTP credentials once at boot; falls back to the dev outbox if they fail.
+    if (process.env.NODE_ENV !== 'test') await verifyTransport()
     app.listen(PORT, '0.0.0.0', () => console.log(`[api] Ember & Sage API listening on http://0.0.0.0:${PORT}`))
   })
   .catch((err) => {

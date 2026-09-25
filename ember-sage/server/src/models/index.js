@@ -389,7 +389,15 @@ const contactSchema = new Schema(
   { timestamps: true },
 )
 const emailLogSchema = new Schema(
-  { to: String, subject: String, template: String, preview: String },
+  {
+    to: String,
+    subject: String,
+    template: String,
+    preview: String,
+    status: { type: String, default: 'dev-outbox' }, // sent | dev-outbox | failed
+    error: String,
+    providerId: String,
+  },
   { timestamps: true },
 )
 const failedJobSchema = new Schema({ error: String, context: Object }, { timestamps: true })

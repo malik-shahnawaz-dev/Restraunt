@@ -24,29 +24,139 @@ ember-sage/
 └─ scripts/render-harness.mjs   jsdom render check for all 35 routes
 ```
 
-## Quick start
+## Run it locally — step by step
+
+### 1. Prerequisites
+
+* **Node.js ≥ 22.5** (the API uses the built-in `node:sqlite`; check with `node -v`)
+* **npm** (ships with Node)
+* Optional: **MongoDB** if you want to run on Mongo instead of SQLite
+
+### 2. Get the code and install
 
 ```bash
+git clone https://github.com/malik-shahnawaz-dev/Restraunt.git
+cd Restraunt/ember-sage
 npm install
-npm run dev          # API on :4000, Vite on :5173
 ```
 
-The first boot seeds the database (settings, admin + demo customers, 7 categories,
-18 dishes, coupons, CMS content, gallery, FAQs, reviews, reservations and ~100
-orders spanning the last 30 days). Nothing else to configure — with no `.env`
-the app runs on SQLite via `node:sqlite`.
+### 3. Create your `.env`
 
-| Account | Email | Password |
+```bash
+cp .env.example .env
+```
+
+Everything has a working default, so **the app runs with no `.env` at all**
+(SQLite + seeded demo data + dev outbox for email). Fill in:
+
+| Variable | Why |
+| --- | --- |
+| `SMTP_USER` / `SMTP_PASS` | real emails (see [Email](#email-smtp) below) |
+| `MAIL_TO` | where contact-form enquiries and table requests are delivered |
+| `JWT_SECRET` | any long random string — change it for anything public |
+| `MONGODB_URI` | only if you want MongoDB instead of SQLite |
+
+### 4. Start the two servers
+
+```bash
+npm run dev
+```
+
+This runs **both** processes (via `concurrently`):
+
+| Process | Command | URL |
 | --- | --- | --- |
-| Admin | `admin@ember.pk` | `Password123!` |
-| Customer | `demo@ember.pk` | `Password123!` |
+| API | `npm run dev:server` | <http://localhost:4000> (health: `/api/health`) |
+| Frontend | `npm run dev:web` | <http://localhost:5173> |
+
+Vite proxies `/api` and `/uploads` to the API, so the browser only ever talks to
+`:5173`. Keep this terminal open; file changes hot-reload on both sides.
+
+Prefer separate terminals?
+
+```bash
+npm run dev:server     # terminal 1 — API on :4000
+npm run dev:web        # terminal 2 — Vite on :5173
+```
+
+### 5. Sign in
+
+The first boot seeds everything (settings, admin + demo customers, 7 categories,
+18 dishes, coupons, CMS content, gallery, FAQs, reviews, reservations and ~100
+orders across the last 30 days).
+
+| Account | Email | Password | Where |
+| --- | --- | --- | --- |
+| Admin | `admin@ember.pk` | `Password123!` | <http://localhost:5173/admin> |
+| Customer | `demo@ember.pk` | `Password123!` | <http://localhost:5173/login> |
+
+### 6. Everyday commands
 
 ```bash
 npm run seed        # top up anything missing
 npm run db:reset    # wipe and re-seed from scratch
-npm run build       # production bundle
-npm start           # serve the built frontend + API from :4000
+npm run test:api    # 139 HTTP tests (needs the server running)
+npm run test:render # mount all 36 routes against the live API
+npm run mail:test   # check the email pipeline
+npm run build       # production bundle into dist/
+npm start           # production: Express serves dist/ + the API on :4000
 ```
+
+### 7. Production mode (single process)
+
+```bash
+npm run build
+npm start           # http://localhost:4000 — frontend and API together
+```
+
+---
+
+## Email (SMTP)
+
+Real emails are sent through Nodemailer as soon as `SMTP_HOST` **and**
+`SMTP_PASS` are set; until then every message is written to the `EmailLog`
+collection and printed to the API console, so nothing breaks.
+
+**Gmail setup (3 minutes)**
+
+1. Turn on **2-Step Verification** for the Google account.
+2. Google Account → **Security** → search **App passwords** → create one for
+   *Mail / Other (Ember & Sage)*.
+3. In `.env`:
+
+   ```env
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=587
+   SMTP_SECURE=false
+   SMTP_USER=you@gmail.com
+   SMTP_PASS=abcdefghijklmnop      # the 16-char App Password, no spaces
+   MAIL_TO=you@gmail.com           # enquiries + table requests land here
+   ```
+
+4. Restart the API (`npm run dev`). You will see
+   `[email] SMTP ready → smtp.gmail.com:587 as you@gmail.com`.
+5. Verify without placing an order:
+
+   ```bash
+   npm run mail:test -- --live --to you@gmail.com
+   ```
+
+The From address defaults to the authenticated account unless you set
+`MAIL_FROM`, because Gmail rejects senders it cannot verify.
+
+**What sends email**
+
+| Trigger | To |
+| --- | --- |
+| Order placed | the customer — full receipt with items, totals and ETA |
+| Order status changes / delivered / cancelled | the customer |
+| Registration | the customer (welcome) |
+| Password reset | the customer (reset link) |
+| Contact form | `MAIL_TO` (reply goes to the guest) **and** an acknowledgement to the guest |
+| Table reservation | the guest **and** `MAIL_TO` |
+| Newsletter signup | the subscriber |
+
+---
 
 ## Scripts
 
@@ -58,7 +168,8 @@ npm start           # serve the built frontend + API from :4000
 | `npm run build` | production frontend build (served by the API in production) |
 | `npm start` | production: Express serves `dist/` **and** the API |
 | `npm run test:api` | 134 HTTP tests against a running server |
-| `npm run test:render` | mounts all 35 routes in jsdom against the live API |
+| `npm run test:render` | mounts all 36 routes in jsdom against the live API |
+| `npm run mail:test` | sends every email template through a local SMTP sink (add `--live --to you@example.com` to use real SMTP) |
 
 ## Database
 
@@ -145,9 +256,8 @@ against the live API, failing on any render error, stuck skeleton or empty page.
 ## Configuration
 
 Copy `.env.example` to `.env`. Everything has a working default; the only values
-you must change for a real deployment are `JWT_SECRET`, `CORS_ORIGIN` and
-(preferably) `MONGODB_URI`. Emails fall back to a dev outbox (stored in the
-`EmailLog` collection and printed to the console) whenever SMTP is not set.
+you must change for a real deployment are `JWT_SECRET`, `CORS_ORIGIN`,
+`SMTP_USER`/`SMTP_PASS` (for real email) and, preferably, `MONGODB_URI`.
 
 ## Security & operations
 
@@ -162,6 +272,7 @@ recovery screen instead of a blank page.
 
 * Payments are a sandbox: card numbers ending `0000` are declined on purpose,
   and no real gateway is charged.
-* Email falls back to the dev outbox unless SMTP is configured.
+* Email is delivered for real as soon as `SMTP_HOST` + `SMTP_PASS` are set
+  (see [Email](#email-smtp)); without them it uses the dev outbox.
 * `flow.mjs` / `smoke.mjs` are Playwright scripts kept for environments that
   can install a browser; `npm run test:render` is the check that runs anywhere.
