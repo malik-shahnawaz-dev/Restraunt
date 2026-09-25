@@ -1,9 +1,10 @@
 import { Router } from 'express'
 import bcrypt from 'bcryptjs'
-import { Types } from 'mongoose'
-import { User, Address, MenuItem, Notification } from '../models/index.js'
+import { Types } from '../db/orm.js'
+import { User, Address, MenuItem, Notification, Order, Reservation, Cart, tierFor, LOYALTY_TIERS } from '../models/index.js'
 import { protect } from '../middleware/auth.js'
 import { ApiError } from '../middleware/error.js'
+import { upload } from '../middleware/upload.js'
 
 const router = Router()
 router.use(protect)
@@ -35,11 +36,13 @@ router.patch('/me/password', async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body
     if (!newPassword || newPassword.length < 8) throw new ApiError(400, 'New password must be at least 8 characters.')
-    if (!(await bcrypt.compare(String(currentPassword || ''), req.user.passwordHash))) {
+    // `req.user` is loaded without the hash for safety — reload the full record
+    const account = await User.findById(req.user._id)
+    if (!(await bcrypt.compare(String(currentPassword || ''), account.passwordHash))) {
       throw new ApiError(401, 'Current password is incorrect.')
     }
-    req.user.passwordHash = await bcrypt.hash(newPassword, 10)
-    await req.user.save()
+    account.passwordHash = await bcrypt.hash(newPassword, 10)
+    await account.save()
     res.json({ message: 'Password changed successfully.' })
   } catch (e) {
     next(e)
@@ -190,6 +193,144 @@ router.delete('/me/payment-methods/:id', async (req, res, next) => {
     req.user.paymentMethods = (req.user.paymentMethods || []).filter((m) => m._id.toString() !== req.params.id)
     await req.user.save()
     res.json({ methods: req.user.paymentMethods })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/* —— Account dashboard: everything the “My account” overview needs —— */
+router.get('/me/summary', async (req, res, next) => {
+  try {
+    const [orders, addresses, favorites, reservations, unread] = await Promise.all([
+      Order.find({ user: req.user._id }).sort({ createdAt: -1 }),
+      Address.find({ user: req.user._id }),
+      MenuItem.find({ _id: { $in: req.user.favorites || [] } }),
+      Reservation.find({ user: req.user._id }).sort({ date: -1 }).limit(5),
+      Notification.countDocuments({ user: req.user._id, read: false }),
+    ])
+
+    const live = orders.filter((o) => o.orderStatus !== 'Cancelled')
+    const spent = live.reduce((s, o) => s + (o.total || 0), 0)
+    const active = orders.find((o) => ['Pending', 'Confirmed', 'Preparing', 'Ready', 'Out for Delivery'].includes(o.orderStatus))
+    const tier = tierFor(req.user.loyalty?.points || 0)
+    const nextTier = [...LOYALTY_TIERS].find((t) => t.min > (req.user.loyalty?.points || 0))
+
+    if (req.user.loyalty?.tier !== tier) {
+      req.user.loyalty = { ...req.user.loyalty?.toObject?.(), tier }
+      await req.user.save()
+    }
+
+    res.json({
+      stats: {
+        orders: live.length,
+        cancelled: orders.length - live.length,
+        spent: Math.round(spent * 100) / 100,
+        favorites: (req.user.favorites || []).length,
+        addresses: addresses.length,
+        reservations: reservations.length,
+        unreadNotifications: unread,
+      },
+      loyalty: {
+        ...(req.user.loyalty?.toObject?.() || { points: 0, lifetimeSpend: 0, ordersCompleted: 0 }),
+        tier,
+        nextTier: nextTier ? { name: nextTier.name, pointsNeeded: nextTier.min - (req.user.loyalty?.points || 0), perk: nextTier.perk } : null,
+        tiers: LOYALTY_TIERS,
+      },
+      activeOrder: active
+        ? {
+            orderNumber: active.orderNumber,
+            status: active.orderStatus,
+            total: active.total,
+            etaMinutes: active.etaMinutes,
+            items: active.items.reduce((s, i) => s + i.qty, 0),
+            createdAt: active.createdAt,
+          }
+        : null,
+      recentOrders: orders.slice(0, 4).map((o) => ({
+        orderNumber: o.orderNumber,
+        status: o.orderStatus,
+        total: o.total,
+        items: o.items.reduce((s, i) => s + i.qty, 0),
+        createdAt: o.createdAt,
+        rated: o.rated,
+        canCancel: ['Pending', 'Confirmed', 'Preparing'].includes(o.orderStatus),
+      })),
+      favorites,
+      upcomingReservations: reservations,
+    })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/* —— Notifications for the signed-in customer —— */
+router.get('/me/notifications', async (req, res, next) => {
+  try {
+    const notifications = await Notification.find({ user: req.user._id }).sort({ createdAt: -1 }).limit(30)
+    res.json({ notifications, unread: notifications.filter((n) => !n.read).length })
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.patch('/me/notifications/read-all', async (req, res, next) => {
+  try {
+    await Notification.updateMany({ user: req.user._id }, { read: true })
+    res.json({ message: 'All notifications marked as read' })
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.patch('/me/notifications/:id/read', async (req, res, next) => {
+  try {
+    await Notification.updateOne({ _id: req.params.id, user: req.user._id }, { read: true })
+    res.json({ message: 'Notification marked as read' })
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.delete('/me/notifications', async (req, res, next) => {
+  try {
+    await Notification.deleteMany({ user: req.user._id })
+    res.json({ message: 'Notifications cleared' })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/* —— Profile picture —— */
+router.patch('/me/avatar', upload.single('avatar'), async (req, res, next) => {
+  try {
+    if (!req.file) throw new ApiError(400, 'Choose an image to upload.')
+    req.user.avatar = `/uploads/${req.file.filename}`
+    await req.user.save()
+    const obj = req.user.toObject()
+    delete obj.passwordHash
+    res.json({ user: obj, avatar: req.user.avatar })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/* —— Close account —— */
+router.delete('/me', async (req, res, next) => {
+  try {
+    const { password } = req.body || {}
+    if (req.user.role === 'admin') throw new ApiError(400, 'Admin accounts cannot be self-deleted.')
+    const account = await User.findById(req.user._id)
+    if (!(await bcrypt.compare(String(password || ''), account.passwordHash))) {
+      throw new ApiError(401, 'Enter your password to confirm account deletion.')
+    }
+    const userId = req.user._id
+    await Promise.all([
+      Address.deleteMany({ user: userId }),
+      Notification.deleteMany({ user: userId }),
+      Cart.deleteMany({ user: userId }),
+    ])
+    await User.deleteOne({ _id: userId })
+    res.json({ message: 'Your account and personal data have been deleted.' })
   } catch (e) {
     next(e)
   }

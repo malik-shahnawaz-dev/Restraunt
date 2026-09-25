@@ -8,9 +8,11 @@ import {
   Coupon,
 } from '../models/index.js'
 import { protect, optionalProtect } from '../middleware/auth.js'
+import { Types } from '../db/orm.js'
 import { ApiError } from '../middleware/error.js'
-import { sendEmail, templates } from '../utils/email.js'
+import { sendEmail, templates, RESTAURANT_INBOX } from '../utils/email.js'
 import { computeTotals } from '../utils/pricing.js'
+import { logAudit } from '../utils/audit.js'
 
 const router = Router()
 
@@ -49,7 +51,7 @@ router.post('/reviews', protect, async (req, res, next) => {
 
 async function recalcRating(menuItemId) {
   const agg = await Review.aggregate([
-    { $match: { menuItem: Review.schema.path('menuItem').cast(menuItemId), status: 'published' } },
+    { $match: { menuItem: new Types.ObjectId(menuItemId), status: 'published' } },
     { $group: { _id: null, avg: { $avg: '$rating' }, count: { $sum: 1 } } },
   ])
   if (agg[0]) {
@@ -76,7 +78,14 @@ router.post('/reservations', optionalProtect, async (req, res, next) => {
       guests: String(guests || '2'),
       notes: notes || '',
     })
+    // The guest gets a confirmation; the restaurant gets a notification it can reply to.
     sendEmail({ to: email, ...templates.reservation(reservation), template: 'reservation' })
+    sendEmail({
+      to: RESTAURANT_INBOX,
+      replyTo: email,
+      ...templates.reservationNotification(reservation),
+      template: 'reservationNotification',
+    })
     res.status(201).json({ reservation })
   } catch (e) {
     next(e)
@@ -85,8 +94,29 @@ router.post('/reservations', optionalProtect, async (req, res, next) => {
 
 router.get('/reservations/mine', protect, async (req, res, next) => {
   try {
-    const reservations = await Reservation.find({ user: req.user._id }).sort({ createdAt: -1 })
+    const reservations = await Reservation.find({ user: req.user._id }).sort({ date: -1, time: -1 })
     res.json({ reservations })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/** Customer cancels their own table request (only while it is still pending/confirmed). */
+router.patch('/reservations/:id/cancel', protect, async (req, res, next) => {
+  try {
+    const reservation = await Reservation.findById(req.params.id)
+    if (!reservation) throw new ApiError(404, 'Reservation not found.')
+    if (String(reservation.user) !== String(req.user._id)) throw new ApiError(403, 'That reservation is not yours.')
+    if (reservation.status === 'Cancelled') throw new ApiError(409, 'That reservation is already cancelled.')
+    if (reservation.status === 'Seated' || reservation.status === 'Completed')
+      throw new ApiError(409, 'This visit is already underway — call the restaurant instead.')
+
+    reservation.status = 'Cancelled'
+    reservation.cancelledAt = new Date()
+    reservation.cancelReason = 'Cancelled by guest'
+    await reservation.save()
+    await logAudit(req, 'cancel:reservation', 'reservation', `${reservation.date} at ${reservation.time}`, reservation._id)
+    res.json({ reservation, message: 'Reservation cancelled.' })
   } catch (e) {
     next(e)
   }
@@ -98,7 +128,20 @@ router.post('/contact', async (req, res, next) => {
     const { name, email, message } = req.body
     if (!name || !email || !message) throw new ApiError(400, 'All fields are required.')
     if (!/^\S+@\S+\.\S+$/.test(email)) throw new ApiError(400, 'Enter a valid email.')
-    await ContactMessage.create({ name, email, message })
+    const enquiry = await ContactMessage.create({ name, email, message })
+
+    // 1) to the restaurant inbox (reply goes straight back to the guest)
+    // 2) an acknowledgement to the guest, so they know it landed
+    await Promise.all([
+      sendEmail({
+        to: RESTAURANT_INBOX,
+        replyTo: email,
+        ...templates.enquiryNotification(enquiry),
+        template: 'enquiryNotification',
+      }),
+      sendEmail({ to: email, ...templates.enquiryAck(enquiry), template: 'enquiryAck' }),
+    ])
+
     res.status(201).json({ message: 'Thanks — we’ll be in touch within one business day.' })
   } catch (e) {
     next(e)

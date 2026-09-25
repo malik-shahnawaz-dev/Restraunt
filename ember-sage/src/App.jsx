@@ -26,6 +26,9 @@ import {
   AddressesSection,
   PaymentsSection,
   SettingsSection,
+  OverviewSection,
+  ReservationsSection,
+  NotificationsSection,
 } from './pages/AccountPage.jsx'
 import AdminLayout from './pages/admin/AdminLayout.jsx'
 import {
@@ -40,14 +43,28 @@ import {
   AdminAnalytics,
   AdminSettings,
 } from './pages/admin/AdminPages.jsx'
+import {
+  AdminContent,
+  AdminGallery,
+  AdminFaqs,
+  AdminSubscribers,
+  AdminMedia,
+  AdminMessages,
+  AdminActivity,
+} from './pages/admin/AdminCms.jsx'
 import { useAuth } from './context/AuthContext.jsx'
+import { metaFor, usePageMeta } from './lib/seo.js'
+import ErrorBoundary from './components/ui/ErrorBoundary.jsx'
 import { PackageSearch } from 'lucide-react'
 
 function ScrollToTop() {
   const { pathname } = useLocation()
+  const meta = metaFor(pathname)
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [pathname])
+  // Keep the browser tab and link previews in step with the route.
+  usePageMeta(meta)
   return null
 }
 
@@ -112,7 +129,7 @@ function NotFound() {
 
 export default function App() {
   return (
-    <>
+    <ErrorBoundary>
       <ScrollToTop />
       <Routes>
         {/* ——— Auth (no chrome) ——— */}
@@ -138,6 +155,13 @@ export default function App() {
           <Route path="reservations" element={<AdminReservations />} />
           <Route path="reviews" element={<AdminReviews />} />
           <Route path="coupons" element={<AdminCoupons />} />
+          <Route path="content" element={<AdminContent />} />
+          <Route path="gallery" element={<AdminGallery />} />
+          <Route path="faqs" element={<AdminFaqs />} />
+          <Route path="subscribers" element={<AdminSubscribers />} />
+          <Route path="messages" element={<AdminMessages />} />
+          <Route path="media" element={<AdminMedia />} />
+          <Route path="activity" element={<AdminActivity />} />
           <Route path="analytics" element={<AdminAnalytics />} />
           <Route path="settings" element={<AdminSettings />} />
         </Route>
@@ -164,17 +188,20 @@ export default function App() {
               </RequireAuth>
             }
           >
-            <Route index element={<ProfileSection />} />
+            <Route index element={<OverviewSection />} />
+            <Route path="profile" element={<ProfileSection />} />
             <Route path="orders" element={<OrdersSection />} />
+            <Route path="reservations" element={<ReservationsSection />} />
             <Route path="favorites" element={<FavoritesSection />} />
             <Route path="addresses" element={<AddressesSection />} />
             <Route path="payments" element={<PaymentsSection />} />
+            <Route path="notifications" element={<NotificationsSection />} />
             <Route path="settings" element={<SettingsSection />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
-    </>
+    </ErrorBoundary>
   )
 }

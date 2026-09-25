@@ -187,3 +187,21 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── Print: a clean receipt without the site chrome ── */
+@media print {
+  header,
+  footer,
+  nav,
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #fff !important;
+  }
+
+  main {
+    padding-top: 0 !important;
+  }
+}

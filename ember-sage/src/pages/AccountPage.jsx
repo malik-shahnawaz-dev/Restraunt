@@ -1,37 +1,49 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
+  Bell,
+  CalendarDays,
   CreditCard,
+  Crown,
   Heart,
   Home,
+  LayoutDashboard,
   LogOut,
   MapPin,
   Pencil,
   Plus,
   Receipt,
+  RefreshCw,
   Settings,
   ShoppingBag,
   Star,
   Trash2,
+  Truck,
   User,
+  X,
 } from 'lucide-react'
 import Button from '../components/ui/Button.jsx'
 import { Badge } from '../components/ui/Badge.jsx'
 import { EmptyState, Reveal } from '../components/ui/Motion.jsx'
-import { Input, Select, Checkbox } from '../components/ui/Input.jsx'
+import { Input, Select, Checkbox, Textarea } from '../components/ui/Input.jsx'
 import { Modal } from '../components/ui/Modal.jsx'
 import { FoodCard } from '../components/menu/FoodCard.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useToast } from '../context/ToastContext.jsx'
+import { useData } from '../context/MenuContext.jsx'
+import { useNotifications } from '../context/NotificationsContext.jsx'
 import { api } from '../lib/api.js'
 
 const NAV = [
-  { to: '/account', label: 'Profile', icon: User, end: true },
+  { to: '/account', label: 'Overview', icon: LayoutDashboard, end: true },
+  { to: '/account/profile', label: 'Profile', icon: User },
   { to: '/account/orders', label: 'Orders', icon: Receipt },
+  { to: '/account/reservations', label: 'Reservations', icon: CalendarDays },
   { to: '/account/favorites', label: 'Favorites', icon: Heart },
   { to: '/account/addresses', label: 'Addresses', icon: MapPin },
   { to: '/account/payments', label: 'Payment Methods', icon: CreditCard },
+  { to: '/account/notifications', label: 'Notifications', icon: Bell },
   { to: '/account/settings', label: 'Settings', icon: Settings },
 ]
 
@@ -182,7 +194,7 @@ function ProfileSection() {
   })
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [stats, setStats] = useState({ orders: 0, spent: 0, points: 0 })
+  const [stats, setStats] = useState({ orders: 0, spent: 0, points: 0, tier: 'Bronze' })
 
   useEffect(() => {
     setForm({
@@ -195,12 +207,15 @@ function ProfileSection() {
 
   useEffect(() => {
     api
-      .get('/orders/mine')
-      .then((d) => {
-        const valid = d.orders.filter((o) => o.orderStatus !== 'Cancelled')
-        const spent = valid.reduce((s, o) => s + o.total, 0)
-        setStats({ orders: valid.length, spent: Math.round(spent * 100) / 100, points: Math.floor(spent * 2) })
-      })
+      .get('/users/me/summary')
+      .then((d) =>
+        setStats({
+          orders: d.stats?.orders || 0,
+          spent: d.stats?.spent || 0,
+          points: d.loyalty?.points || 0,
+          tier: d.loyalty?.tier || 'Bronze',
+        }),
+      )
       .catch(() => {})
   }, [])
 
@@ -250,7 +265,7 @@ function ProfileSection() {
         {[
           { label: 'Total Orders', value: String(stats.orders) },
           { label: 'Total Spent', value: `$${stats.spent.toLocaleString()}` },
-          { label: 'Reward Points', value: String(stats.points) },
+          { label: `${stats.tier} Points`, value: String(stats.points) },
         ].map((s, i) => (
           <Reveal key={s.label} delay={i * 0.06}>
             <div className="rounded-card border border-ink/6 bg-white p-5 text-center shadow-soft">
@@ -269,12 +284,42 @@ function OrdersSection() {
   const toast = useToast()
   const navigate = useNavigate()
   const [orders, setOrders] = useState(null)
+  const [busyId, setBusyId] = useState(null)
+  const [reviewing, setReviewing] = useState(null)
 
-  useEffect(() => {
+  const load = useCallback(() => {
     api.get('/orders/mine').then((d) => setOrders(d.orders)).catch(() => setOrders([]))
   }, [])
 
+  useEffect(load, [load])
+
   const statusTone = { Delivered: 'success', Preparing: 'warning', Cancelled: 'danger', Pending: 'warning', Confirmed: 'info', Ready: 'info', 'Out for Delivery': 'clay' }
+
+  const reorder = async (order) => {
+    setBusyId(order.orderNumber)
+    try {
+      const d = await api.post(`/orders/${order.orderNumber}/reorder`)
+      toast.success('Added to cart', `${d.added} item(s) from #${order.orderNumber}${d.skipped ? ` · ${d.skipped} unavailable` : ''}`)
+      navigate('/cart')
+    } catch (e) {
+      toast.error('Could not reorder', e.message)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const cancel = async (order) => {
+    setBusyId(order.orderNumber)
+    try {
+      await api.post(`/orders/${order.orderNumber}/cancel`, { reason: 'Cancelled from my account' })
+      toast.success('Order cancelled', `Order #${order.orderNumber} was cancelled.`)
+      load()
+    } catch (e) {
+      toast.error('Could not cancel', e.message)
+    } finally {
+      setBusyId(null)
+    }
+  }
 
   if (orders === null) {
     return (
@@ -336,25 +381,102 @@ function OrdersSection() {
               </ul>
               <div className="mt-4 flex flex-wrap gap-2.5 border-t border-ink/6 pt-4">
                 <Button size="sm" variant="outline" onClick={() => navigate(`/track/${o.orderNumber}`)}>
-                  View Details
+                  <Truck size={14} /> Track order
                 </Button>
                 <Button
                   size="sm"
                   variant="dark"
-                  onClick={() => {
-                    toast.success('Added to cart', `Reordered items from #${o.orderNumber}`)
-                    navigate('/cart')
-                  }}
+                  onClick={() => reorder(o)}
+                  loading={busyId === o.orderNumber}
                   disabled={o.orderStatus === 'Cancelled'}
                 >
-                  <ShoppingBag size={14} /> Reorder
+                  <RefreshCw size={14} /> Reorder
                 </Button>
+                {['Pending', 'Confirmed', 'Preparing'].includes(o.orderStatus) && (
+                  <Button size="sm" variant="ghost" onClick={() => cancel(o)} disabled={busyId === o.orderNumber}>
+                    <X size={14} /> Cancel
+                  </Button>
+                )}
+                {o.orderStatus === 'Delivered' && !o.rated && (
+                  <Button size="sm" variant="outline" onClick={() => setReviewing(o)}>
+                    <Star size={14} /> Rate order
+                  </Button>
+                )}
+                {o.orderStatus === 'Delivered' && o.rated && (
+                  <Badge tone="success" size="xs">Reviewed</Badge>
+                )}
               </div>
             </article>
           </Reveal>
         ))}
       </div>
+
+      <ReviewModal order={reviewing} onClose={() => setReviewing(null)} onDone={load} />
     </>
+  )
+}
+
+function ReviewModal({ order, onClose, onDone }) {
+  const toast = useToast()
+  const [rating, setRating] = useState(5)
+  const [text, setText] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  if (!order) return null
+
+  const submit = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      await api.post(`/orders/${order.orderNumber}/review`, { rating, text, dish: order.items[0]?.name })
+      toast.success('Thanks for the review!', 'Your feedback is now public on the site.')
+      onDone()
+      onClose()
+    } catch (err) {
+      toast.error('Could not post review', err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal open={Boolean(order)} onClose={onClose} title={`Rate order #${order.orderNumber}`}>
+      <form onSubmit={submit} className="space-y-4 p-5">
+        <div>
+          <p className="mb-2 text-[13px] font-semibold text-ink-600">How was it?</p>
+          <div className="flex gap-1.5">
+            {[1, 2, 3, 4, 5].map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setRating(value)}
+                aria-label={`${value} star${value > 1 ? 's' : ''}`}
+                className={`grid h-10 w-10 cursor-pointer place-items-center rounded-xl border transition ${
+                  value <= rating ? 'border-clay bg-clay-soft text-clay' : 'border-ink/10 text-warm'
+                }`}
+              >
+                <Star size={18} className={value <= rating ? 'fill-clay' : ''} />
+              </button>
+            ))}
+          </div>
+        </div>
+        <Textarea
+          label="Your review"
+          rows={4}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="What did you love (or what should we fix)?"
+        />
+        <div className="flex justify-end gap-2.5">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={saving} disabled={text.trim().length < 10}>
+            Post review
+          </Button>
+        </div>
+      </form>
+    </Modal>
   )
 }
 
@@ -399,6 +521,361 @@ function FavoritesSection() {
           ))}
         </div>
       )}
+    </>
+  )
+}
+
+
+/* ————————— Overview (account home) ————————— */
+function OverviewSection() {
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const [summary, setSummary] = useState(null)
+
+  const load = useCallback(() => {
+    api
+      .get('/users/me/summary')
+      .then(setSummary)
+      .catch(() => setSummary(null))
+  }, [])
+
+  useEffect(load, [load])
+
+  if (!summary) {
+    return (
+      <div className="space-y-4">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="skeleton h-32 rounded-card" />
+        ))}
+      </div>
+    )
+  }
+
+  const { stats, loyalty, activeOrder, recentOrders, favorites, upcomingReservations } = summary
+  const nextTier = loyalty.nextTier
+  const progress = nextTier ? Math.min(100, Math.round((loyalty.points / (loyalty.points + nextTier.pointsNeeded)) * 100)) : 100
+
+  return (
+    <>
+      <SectionHead eyebrow="Account" title={`Hello, ${user?.firstName || 'there'}`} />
+
+      {/* Loyalty */}
+      <Reveal className="mb-6 overflow-hidden rounded-card border border-ink/6 bg-ink p-6 text-cream shadow-soft sm:p-7">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.2em] text-clay uppercase">
+              <Crown size={13} /> {loyalty.tier} member
+            </p>
+            <p className="mt-2 font-display text-3xl font-medium">
+              {loyalty.points.toLocaleString()} <span className="text-[18px] text-cream/60">points</span>
+            </p>
+            <p className="mt-1.5 text-[13.5px] text-cream/60">
+              {nextTier
+                ? `${nextTier.pointsNeeded.toLocaleString()} more points to unlock ${nextTier.name} — ${nextTier.perk}`
+                : 'You have reached our highest tier. Thank you!'}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-[11px] tracking-[0.16em] text-cream/40 uppercase">Lifetime spend</p>
+            <p className="font-display text-2xl font-medium text-clay">${(loyalty.lifetimeSpend || 0).toLocaleString()}</p>
+          </div>
+        </div>
+        <div className="mt-5 h-2 overflow-hidden rounded-full bg-cream/10">
+          <motion.div
+            className="h-full rounded-full bg-clay"
+            initial={{ width: 0 }}
+            animate={{ width: `${progress}%` }}
+            transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+          />
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {loyalty.tiers.map((tier) => (
+            <span
+              key={tier.name}
+              className={`rounded-full px-3 py-1 text-[11.5px] font-semibold ${
+                tier.name === loyalty.tier ? 'bg-clay text-white' : 'bg-cream/10 text-cream/60'
+              }`}
+            >
+              {tier.name} · {tier.min}+
+            </span>
+          ))}
+        </div>
+      </Reveal>
+
+      {/* Stats */}
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: 'Orders placed', value: stats.orders, icon: Receipt, to: '/account/orders' },
+          { label: 'Favorites', value: stats.favorites, icon: Heart, to: '/account/favorites' },
+          { label: 'Saved addresses', value: stats.addresses, icon: MapPin, to: '/account/addresses' },
+          { label: 'Reservations', value: stats.reservations, icon: CalendarDays, to: '/account/reservations' },
+        ].map((card, i) => (
+          <Reveal key={card.label} delay={i * 0.05}>
+            <Link
+              to={card.to}
+              className="block rounded-card border border-ink/6 bg-white p-5 shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift"
+            >
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-clay-soft text-clay">
+                <card.icon size={17} />
+              </span>
+              <p className="mt-3 font-display text-2xl font-medium text-ink">{card.value}</p>
+              <p className="text-[12.5px] font-medium tracking-wide text-warm uppercase">{card.label}</p>
+            </Link>
+          </Reveal>
+        ))}
+      </div>
+
+      {/* Active order */}
+      {activeOrder && (
+        <Reveal className="mb-6 rounded-card border border-clay/25 bg-clay-soft/40 p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold tracking-[0.18em] text-clay-dark uppercase">Order in progress</p>
+              <p className="mt-1 font-display text-xl font-medium">
+                #{activeOrder.orderNumber} · {activeOrder.status}
+              </p>
+              <p className="text-[13.5px] text-ink-600">
+                {activeOrder.items} items · ${activeOrder.total.toFixed(2)} · ETA {activeOrder.etaMinutes} min
+              </p>
+            </div>
+            <Button size="sm" onClick={() => navigate(`/track/${activeOrder.orderNumber}`)}>
+              <Truck size={14} /> Track it live
+            </Button>
+          </div>
+        </Reveal>
+      )}
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        {/* Recent orders */}
+        <SectionCard
+          title="Recent orders"
+          subtitle="Your latest activity"
+          action={
+            <Link to="/account/orders" className="text-[13px] font-medium text-clay hover:underline">
+              View all →
+            </Link>
+          }
+        >
+          {recentOrders.length === 0 ? (
+            <p className="py-6 text-center text-[13.5px] text-warm">
+              No orders yet.{' '}
+              <Link to="/menu" className="text-clay hover:underline">
+                Browse the menu
+              </Link>
+            </p>
+          ) : (
+            <ul className="divide-y divide-ink/5">
+              {recentOrders.map((order) => (
+                <li key={order.orderNumber} className="flex items-center justify-between gap-3 py-3">
+                  <div className="min-w-0">
+                    <p className="text-[13.5px] font-semibold text-ink">#{order.orderNumber}</p>
+                    <p className="text-[12.5px] text-warm">
+                      {new Date(order.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ·{' '}
+                      {order.items} items
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[13.5px] font-semibold tabular-nums">${order.total.toFixed(2)}</span>
+                    <Badge tone={order.status === 'Delivered' ? 'success' : order.status === 'Cancelled' ? 'danger' : 'warning'} size="xs">
+                      {order.status}
+                    </Badge>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </SectionCard>
+
+        {/* Reservations */}
+        <SectionCard
+          title="Upcoming reservations"
+          subtitle="Table requests linked to your account"
+          action={
+            <Link to="/account/reservations" className="text-[13px] font-medium text-clay hover:underline">
+              Manage →
+            </Link>
+          }
+        >
+          {upcomingReservations.length === 0 ? (
+            <p className="py-6 text-center text-[13.5px] text-warm">
+              Nothing booked yet.{' '}
+              <Link to="/reservations" className="text-clay hover:underline">
+                Reserve a table
+              </Link>
+            </p>
+          ) : (
+            <ul className="divide-y divide-ink/5">
+              {upcomingReservations.slice(0, 4).map((reservation) => (
+                <li key={reservation._id} className="flex items-center justify-between gap-3 py-3">
+                  <div>
+                    <p className="text-[13.5px] font-semibold text-ink">
+                      {reservation.date} · {reservation.time}
+                    </p>
+                    <p className="text-[12.5px] text-warm">
+                      {reservation.guests} guests{reservation.notes ? ` · ${reservation.notes}` : ''}
+                    </p>
+                  </div>
+                  <Badge tone={reservation.status === 'Confirmed' ? 'success' : reservation.status === 'Cancelled' ? 'danger' : 'warning'} size="xs">
+                    {reservation.status}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </SectionCard>
+      </div>
+
+      {favorites?.length > 0 && (
+        <SectionCard
+          title="Saved dishes"
+          subtitle="Tap a dish to open it"
+          action={
+            <Link to="/account/favorites" className="text-[13px] font-medium text-clay hover:underline">
+              All favorites →
+            </Link>
+          }
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            {favorites.slice(0, 2).map((item, i) => (
+              <FoodCard key={item._id} item={item} index={i} />
+            ))}
+          </div>
+        </SectionCard>
+      )}
+    </>
+  )
+}
+
+/* ————————— Reservations ————————— */
+function ReservationsSection() {
+  const toast = useToast()
+  const [reservations, setReservations] = useState(null)
+
+  const load = useCallback(() => {
+    api.get('/reservations/mine').then((d) => setReservations(d.reservations)).catch(() => setReservations([]))
+  }, [])
+
+  useEffect(load, [load])
+
+  const cancel = async (reservation) => {
+    try {
+      await api.patch(`/reservations/${reservation._id}/cancel`)
+      toast.success('Reservation cancelled', `Your table for ${reservation.date} was released.`)
+      load()
+    } catch (e) {
+      toast.error('Could not cancel', e.message)
+    }
+  }
+
+  const tone = { Confirmed: 'success', Pending: 'warning', Seated: 'clay', Cancelled: 'danger' }
+
+  return (
+    <>
+      <SectionHead eyebrow="Bookings" title="My Reservations" />
+      <SectionCard
+        title="Table requests"
+        subtitle="Requests are confirmed by the restaurant — usually within 30 minutes."
+        action={
+          <Link to="/reservations">
+            <Button size="sm">
+              <Plus size={14} /> Book a table
+            </Button>
+          </Link>
+        }
+      >
+        {reservations === null ? (
+          <div className="space-y-3">
+            {[0, 1].map((i) => (
+              <div key={i} className="skeleton h-20 rounded-xl" />
+            ))}
+          </div>
+        ) : reservations.length === 0 ? (
+          <EmptyState
+            icon={CalendarDays}
+            title="No reservations"
+            message="Book a table and it will appear here with its live status."
+            action={
+              <Link to="/reservations">
+                <Button>Reserve a table</Button>
+              </Link>
+            }
+          />
+        ) : (
+          <ul className="divide-y divide-ink/5">
+            {reservations.map((reservation) => (
+              <li key={reservation._id} className="flex flex-wrap items-center justify-between gap-3 py-4">
+                <div>
+                  <p className="text-[14px] font-semibold text-ink">
+                    {reservation.date} · {reservation.time}
+                  </p>
+                  <p className="text-[13px] text-warm">
+                    {reservation.guests} guests
+                    {reservation.notes ? ` · ${reservation.notes}` : ''}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <Badge tone={tone[reservation.status] || 'neutral'} size="xs">
+                    {reservation.status}
+                  </Badge>
+                  {!['Cancelled', 'Seated'].includes(reservation.status) && (
+                    <Button size="xs" variant="ghost" onClick={() => cancel(reservation)}>
+                      Cancel
+                    </Button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </SectionCard>
+    </>
+  )
+}
+
+/* ————————— Notifications ————————— */
+function NotificationsSection() {
+  const { notifications, unreadCount, markRead, markAllRead, clearAll, refresh } = useNotifications()
+
+  return (
+    <>
+      <SectionHead eyebrow="Inbox" title="Notifications" />
+      <SectionCard
+        title={`${unreadCount} unread`}
+        subtitle="Order updates, payment receipts and offers — stored on your account."
+        action={
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={markAllRead} disabled={unreadCount === 0}>
+              Mark all read
+            </Button>
+            <Button size="sm" variant="ghost" onClick={async () => { await clearAll(); refresh() }}>
+              Clear
+            </Button>
+          </div>
+        }
+      >
+        {notifications.length === 0 ? (
+          <EmptyState icon={Bell} title="Nothing here yet" message="We’ll notify you the moment something happens with an order." />
+        ) : (
+          <ul className="divide-y divide-ink/5">
+            {notifications.map((notification) => (
+              <li key={notification.id} className={`py-3.5 ${notification.read ? '' : 'rounded-xl bg-clay-soft/30 px-3'}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[13.5px] font-semibold text-ink">{notification.title}</p>
+                    <p className="mt-0.5 text-[13px] leading-relaxed text-warm">{notification.message}</p>
+                    <p className="mt-1 text-[11.5px] text-warm-light">{notification.time}</p>
+                  </div>
+                  {!notification.read && (
+                    <Button size="xs" variant="outline" onClick={() => markRead(notification.id)}>
+                      Mark read
+                    </Button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </SectionCard>
     </>
   )
 }
@@ -734,10 +1211,13 @@ function SettingsSection() {
 
 export {
   AccountShell,
+  OverviewSection,
   ProfileSection,
   OrdersSection,
+  ReservationsSection,
   FavoritesSection,
   AddressesSection,
   PaymentsSection,
+  NotificationsSection,
   SettingsSection,
 }

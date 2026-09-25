@@ -499,7 +499,7 @@ export function AdminMenu() {
           >
             <div className="flex gap-4 p-4">
               <img
-                src={item.image}
+                src={item.image || '/images/kitchen.jpg'}
                 alt=""
                 className={`h-20 w-20 shrink-0 rounded-xl object-cover ${item.available ? '' : 'grayscale opacity-60'}`}
                 loading="lazy"
@@ -825,7 +825,12 @@ export function AdminCategories() {
           <Reveal key={c._id} delay={i * 0.04}>
             <div className="group overflow-hidden rounded-card border border-ink/6 bg-white shadow-soft">
               <div className="relative h-32 overflow-hidden">
-                <img src={c.image} alt="" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" loading="lazy" />
+                <img
+                  src={c.image || '/images/kitchen.jpg'}
+                  alt=""
+                  className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                  loading="lazy"
+                />
                 <span className="absolute inset-0 bg-ink/25" />
               </div>
               <div className="p-4">
@@ -1120,12 +1125,18 @@ export function AdminCoupons() {
 /* ═════════ ANALYTICS ═════════ */
 export function AdminAnalytics() {
   const toast = useToast()
-  const [stats, setStats] = useState(null)
-  useEffect(() => {
-    api.get('/admin/stats').then(setStats).catch(() => toast.error('Could not load analytics'))
-  }, [toast])
+  const [range, setRange] = useState(30)
+  const [data, setData] = useState(null)
 
-  if (!stats) {
+  useEffect(() => {
+    setData(null)
+    api
+      .get(`/admin/analytics?days=${range}`)
+      .then(setData)
+      .catch((e) => toast.error('Could not load analytics', e.message))
+  }, [range, toast])
+
+  if (!data) {
     return (
       <div className="grid min-h-[40vh] place-items-center">
         <Spinner size={28} />
@@ -1133,32 +1144,121 @@ export function AdminAnalytics() {
     )
   }
 
+  const { summary, revenueSeries, peakHours, topDishes, ordersByCategory, paymentMix, fulfillmentMix, statusMix } = data
+
   return (
     <>
-      <AdminPageHead title="Analytics" subtitle="Performance trends computed from live orders." />
-      <div className="grid gap-5 xl:grid-cols-2">
+      <AdminPageHead
+        title="Analytics"
+        subtitle={`Everything below is computed live from orders placed in the last ${range} days.`}
+        action={
+          <div className="flex gap-2">
+            {[7, 30, 90].map((days) => (
+              <Button key={days} size="sm" variant={range === days ? 'dark' : 'outline'} onClick={() => setRange(days)}>
+                {days}d
+              </Button>
+            ))}
+          </div>
+        }
+      />
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Revenue" value={`$${summary.revenue.toLocaleString()}`} icon={DollarSign} delay={0} />
+        <StatCard label="Orders" value={String(summary.orders)} icon={ClipboardList} delay={0.06} />
+        <StatCard label="Avg. order value" value={`$${summary.avgOrderValue.toFixed(2)}`} icon={ShoppingBag} delay={0.12} />
+        <StatCard label="Customers" value={String(summary.customers)} delta={`+${summary.newCustomers} new`} icon={Users} delay={0.18} />
+      </div>
+
+      <div className="mt-5 grid gap-5 xl:grid-cols-2">
         <Reveal className="rounded-card border border-ink/6 bg-white p-6 shadow-soft">
-          <h2 className="font-display text-lg font-medium">Revenue Overview</h2>
-          <p className="mb-4 text-[13px] text-warm">Gross sales, last 7 days</p>
-          <RevenueChart data={stats.revenueSeries} />
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-display text-lg font-medium">Revenue</h2>
+            <Badge tone="olive">Last {range} days</Badge>
+          </div>
+          <RevenueChart data={revenueSeries} />
         </Reveal>
         <Reveal delay={0.06} className="rounded-card border border-ink/6 bg-white p-6 shadow-soft">
-          <h2 className="font-display text-lg font-medium">Orders Overview</h2>
-          <p className="mb-4 text-[13px] text-warm">Order volume by day</p>
-          <OrdersBarChart data={stats.ordersSeries} />
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-display text-lg font-medium">Orders per day</h2>
+            <Badge tone="clay">{summary.orders} total</Badge>
+          </div>
+          <OrdersBarChart data={revenueSeries} />
         </Reveal>
         <Reveal delay={0.04} className="rounded-card border border-ink/6 bg-white p-6 shadow-soft">
-          <h2 className="font-display text-lg font-medium">Category Share</h2>
-          <p className="mb-4 text-[13px] text-warm">Where the menu concentrates</p>
-          <DonutChart data={stats.ordersByCategory} />
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-display text-lg font-medium">Category share</h2>
+            <Badge tone="neutral">by items sold</Badge>
+          </div>
+          <DonutChart data={ordersByCategory} />
         </Reveal>
         <Reveal delay={0.1} className="rounded-card border border-ink/6 bg-white p-6 shadow-soft">
-          <h2 className="font-display text-lg font-medium">Top Performers</h2>
-          <p className="mb-5 text-[13px] text-warm">Dishes driving engagement</p>
-          <PopularDishes data={stats.popularDishes} />
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-display text-lg font-medium">Top dishes</h2>
+            <Badge tone="clay">live order lines</Badge>
+          </div>
+          <PopularDishes data={topDishes} />
+        </Reveal>
+        <Reveal delay={0.05} className="rounded-card border border-ink/6 bg-white p-6 shadow-soft">
+          <h2 className="mb-4 font-display text-lg font-medium">Peak hours</h2>
+          <OrdersBarChart data={peakHours} />
+        </Reveal>
+        <Reveal delay={0.1} className="rounded-card border border-ink/6 bg-white p-6 shadow-soft">
+          <h2 className="mb-4 font-display text-lg font-medium">Mix breakdown</h2>
+          <div className="space-y-4">
+            <MixBars title="Payment method" mix={paymentMix} />
+            <MixBars title="Fulfillment" mix={fulfillmentMix} />
+            <MixBars title="Order status" mix={statusMix} />
+          </div>
         </Reveal>
       </div>
+
+      <Reveal className="mt-5 grid gap-4 rounded-card border border-ink/6 bg-white p-6 shadow-soft sm:grid-cols-4">
+        {[
+          { label: 'Cancelled orders', value: summary.cancelled },
+          { label: 'All-time orders', value: summary.allOrders },
+          { label: 'Dishes on menu', value: summary.menuCount },
+          { label: 'Reservations', value: summary.reservations },
+        ].map((row) => (
+          <div key={row.label}>
+            <p className="text-[11.5px] font-semibold tracking-[0.14em] text-warm uppercase">{row.label}</p>
+            <p className="mt-1 font-display text-2xl font-medium text-ink tabular-nums">{row.value}</p>
+          </div>
+        ))}
+      </Reveal>
     </>
+  )
+}
+
+function MixBars({ title, mix = {} }) {
+  const entries = Object.entries(mix)
+  const total = entries.reduce((sum, [, value]) => sum + value, 0) || 1
+  if (!entries.length) return null
+  return (
+    <div>
+      <p className="mb-2 text-[12.5px] font-semibold tracking-wide text-warm uppercase">{title}</p>
+      <ul className="space-y-2">
+        {entries.map(([key, value], i) => (
+          <li key={key}>
+            <div className="mb-1 flex items-center justify-between text-[13px]">
+              <span className="capitalize text-ink-600">{key}</span>
+              <span className="tabular-nums text-warm">
+                {value} · {Math.round((value / total) * 100)}%
+              </span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-beige">
+              <motion.div
+                className="h-full rounded-full"
+                style={{ background: i % 2 ? '#5F6F45' : '#C0522F' }}
+                initial={{ width: 0 }}
+                whileInView={{ width: `${(value / total) * 100}%` }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.8 }}
+              />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 

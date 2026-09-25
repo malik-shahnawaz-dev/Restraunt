@@ -5,6 +5,7 @@ import { CalendarDays, Clock3, CreditCard, Mail, MapPin, Package, Truck } from '
 import Button from '../components/ui/Button.jsx'
 import { Reveal } from '../components/ui/Motion.jsx'
 import { restaurant } from '../data/menu.js'
+import { useData } from '../context/MenuContext.jsx'
 import { useToast } from '../context/ToastContext.jsx'
 
 const FALLBACK = {
@@ -21,6 +22,7 @@ const FALLBACK = {
 }
 
 export default function OrderConfirmedPage() {
+  const { settings } = useData()
   const location = useLocation()
   const navigate = useNavigate()
   const toast = useToast()
@@ -163,7 +165,7 @@ export default function OrderConfirmedPage() {
           <p className="mt-8 text-center text-[13.5px] text-warm">
             Questions about your order?{' '}
             <Link to="/contact" className="font-medium text-clay hover:underline">
-              Contact {restaurant.name}
+              Contact {settings.name || restaurant.name}
             </Link>
           </p>
         </Reveal>

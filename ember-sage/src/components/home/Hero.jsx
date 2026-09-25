@@ -3,9 +3,19 @@ import { Link } from 'react-router-dom'
 import { motion, useScroll, useTransform } from 'framer-motion'
 import { Clock3, MapPin, Star, ArrowDown } from 'lucide-react'
 import Button from '../ui/Button.jsx'
-import { restaurant } from '../../data/menu.js'
+import { useData } from '../../context/MenuContext.jsx'
 
 const ease = [0.22, 1, 0.36, 1]
+
+const ICONS = { clock: Clock3, pin: MapPin, star: Star }
+
+/** Split "Good Food. Good Mood." into two display lines. */
+function titleLines(title = '') {
+  return title
+    .split(/(?<=\.)\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+}
 
 export default function Hero() {
   const ref = useRef(null)
@@ -14,12 +24,42 @@ export default function Hero() {
   const imgScale = useTransform(scrollYProgress, [0, 1], [1, 1.12])
   const fade = useTransform(scrollYProgress, [0, 0.75], [1, 0])
 
+  const { settings, stats, getContent } = useData()
+  const hero = getContent('home.hero', {
+    eyebrow: `Open today · ${settings.openToday}`,
+    title: 'Good Food. Good Mood.',
+    subtitle: settings.tagline,
+    image: '/images/hero.jpg',
+    ctaLabel: 'Explore Menu',
+    ctaHref: '/menu',
+    data: {},
+  })
+
+  const lines = titleLines(hero.title)
+  const ctaHref = hero.ctaHref || '/menu'
+  const secondaryHref = hero.data?.secondaryCtaHref || '/menu'
+
+  // Live figures first, CMS overrides second
+  const heroStats = (hero.data?.stats?.length ? hero.data.stats : [
+    { icon: 'clock', label: 'Open Today', value: settings.openToday },
+    { icon: 'pin', label: 'Location', value: settings.city || 'Islamabad' },
+    { icon: 'star', label: 'Rating', value: `${stats.rating ?? 4.9} · ${(stats.reviewCount ?? 0).toLocaleString()} reviews` },
+  ]).map((item) => ({
+    ...item,
+    value:
+      item.icon === 'clock' && !hero.data?.stats?.length
+        ? settings.openToday
+        : item.icon === 'star' && !hero.data?.stats?.length
+          ? `${stats.rating ?? 4.9} · ${(stats.reviewCount ?? 0).toLocaleString()} reviews`
+          : item.value,
+  }))
+
   return (
     <section ref={ref} className="relative flex min-h-svh items-end overflow-hidden bg-ink" aria-label="Welcome">
       <motion.div style={{ y: imgY, scale: imgScale }} className="absolute inset-0" initial={{ scale: 1.08 }}>
         <motion.img
-          src="/images/hero.jpg"
-          alt="Signature dish plated at Ember & Sage"
+          src={hero.image || '/images/hero.jpg'}
+          alt={hero.data?.imageAlt || 'Signature dish plated at Ember & Sage'}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 1.4, ease }}
@@ -45,7 +85,7 @@ export default function Hero() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-clay opacity-75" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-clay" />
             </span>
-            Open today · {restaurant.openToday}
+            {settings.maintenance ? 'Temporarily closed for maintenance' : hero.eyebrow || `Open today · ${settings.openToday}`}
           </motion.p>
 
           <motion.h1
@@ -54,9 +94,13 @@ export default function Hero() {
             transition={{ duration: 0.9, delay: 0.38, ease }}
             className="font-display text-[clamp(3rem,8.5vw,6.5rem)] leading-[0.98] font-medium tracking-[-0.03em] text-cream"
           >
-            Good Food.
-            <br />
-            <span className="italic text-clay">Good Mood.</span>
+            {lines[0] || hero.title}
+            {lines[1] && (
+              <>
+                <br />
+                <span className="italic text-clay">{lines[1]}</span>
+              </>
+            )}
           </motion.h1>
 
           <motion.p
@@ -65,7 +109,7 @@ export default function Hero() {
             transition={{ duration: 0.8, delay: 0.52, ease }}
             className="mt-6 max-w-lg text-[16.5px] leading-relaxed text-cream/70 sm:text-[17.5px]"
           >
-            {restaurant.description}
+            {hero.subtitle}
           </motion.p>
 
           <motion.div
@@ -74,14 +118,14 @@ export default function Hero() {
             transition={{ duration: 0.8, delay: 0.66, ease }}
             className="mt-9 flex flex-wrap gap-3.5"
           >
-            <Link to="/menu">
+            <Link to={ctaHref}>
               <Button size="xl" variant="primary" className="min-w-44">
-                Explore Menu
+                {hero.ctaLabel || 'Explore Menu'}
               </Button>
             </Link>
-            <Link to="/menu">
+            <Link to={secondaryHref}>
               <Button size="xl" variant="outline-light" className="min-w-40">
-                Order Now
+                {hero.data?.secondaryCtaLabel || 'Order Now'}
               </Button>
             </Link>
           </motion.div>
@@ -92,25 +136,20 @@ export default function Hero() {
             transition={{ duration: 0.8, delay: 0.82, ease }}
             className="mt-12 flex flex-wrap gap-x-8 gap-y-4 border-t border-cream/12 pt-7"
           >
-            {[
-              { icon: Clock3, label: 'Open Today', value: restaurant.openToday },
-              { icon: MapPin, label: 'Location', value: restaurant.city },
-              {
-                icon: Star,
-                label: 'Rating',
-                value: `${restaurant.rating} · ${restaurant.reviewCount.toLocaleString()} reviews`,
-              },
-            ].map((i) => (
-              <div key={i.label} className="flex items-center gap-3">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-cream/15 text-clay">
-                  <i.icon size={16} strokeWidth={1.8} className={i.icon === Star ? 'fill-clay' : ''} />
-                </span>
-                <div>
-                  <dt className="text-[10.5px] font-semibold tracking-[0.16em] text-cream/40 uppercase">{i.label}</dt>
-                  <dd className="mt-0.5 text-[14px] font-medium text-cream/90">{i.value}</dd>
+            {heroStats.map((i) => {
+              const Icon = ICONS[i.icon] || Star
+              return (
+                <div key={i.label} className="flex items-center gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-cream/15 text-clay">
+                    <Icon size={16} strokeWidth={1.8} className={i.icon === 'star' ? 'fill-clay' : ''} />
+                  </span>
+                  <div>
+                    <dt className="text-[10.5px] font-semibold tracking-[0.16em] text-cream/40 uppercase">{i.label}</dt>
+                    <dd className="mt-0.5 text-[14px] font-medium text-cream/90">{i.value}</dd>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </motion.dl>
         </div>
 

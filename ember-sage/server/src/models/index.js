@@ -1,7 +1,5 @@
-import mongoose from 'mongoose'
 import { randomUUID } from 'node:crypto'
-
-const { Schema, model, Types } = mongoose
+import { Schema, model, Types } from '../db/orm.js'
 
 /* ————————————————— Users ————————————————— */
 const userSchema = new Schema(
@@ -35,6 +33,18 @@ const userSchema = new Schema(
     resetToken: String,
     resetTokenExpires: Date,
     lastLoginAt: Date,
+    avatar: String,
+    birthday: String,
+    loyalty: {
+      points: { type: Number, default: 0 },
+      tier: { type: String, enum: ['Bronze', 'Silver', 'Gold', 'Platinum'], default: 'Bronze' },
+      lifetimeSpend: { type: Number, default: 0 },
+      ordersCompleted: { type: Number, default: 0 },
+      streak: { type: Number, default: 0 },
+      lastOrderAt: Date,
+    },
+    notes: String,
+    blocked: { type: Boolean, default: false },
   },
   { timestamps: true },
 )
@@ -173,6 +183,11 @@ const orderSchema = new Schema(
     customerNotes: String,
     contact: { name: String, email: String, phone: String },
     etaMinutes: { type: Number, default: 40 },
+    cancelReason: String,
+    rated: { type: Boolean, default: false },
+    timeline: [
+      { status: String, at: { type: Date, default: Date.now }, note: String },
+    ],
   },
   { timestamps: true },
 )
@@ -202,7 +217,14 @@ const reservationSchema = new Schema(
     time: { type: String, required: true },
     guests: { type: String, default: '2' },
     notes: String,
-    status: { type: String, enum: ['Pending', 'Confirmed', 'Seated', 'Cancelled'], default: 'Pending' },
+    status: {
+      type: String,
+      enum: ['Pending', 'Confirmed', 'Seated', 'Completed', 'Cancelled'],
+      default: 'Pending',
+    },
+    cancelReason: String,
+    cancelledAt: Date,
+    tableId: String,
   },
   { timestamps: true },
 )
@@ -218,6 +240,9 @@ const reviewSchema = new Schema(
     text: { type: String, required: true },
     dish: String,
     status: { type: String, enum: ['published', 'hidden'], default: 'published' },
+    featured: { type: Boolean, default: false },
+    order: { type: Types.ObjectId, ref: 'Order' },
+    reply: String,
     date: { type: Date, default: Date.now },
   },
   { timestamps: true },
@@ -274,9 +299,105 @@ const settingSchema = new Schema(
   { timestamps: true },
 )
 
-const contactSchema = new Schema({ name: String, email: String, message: String }, { timestamps: true })
+/* ————————————————— CMS: editable content blocks —————————————————
+   Every marketing surface (home hero, about story, footer note, announcements…)
+   is stored as a keyed block so the admin CMS edits live database content
+   instead of hard-coded copy in the React bundle. */
+const contentSchema = new Schema(
+  {
+    key: { type: String, required: true, unique: true, lowercase: true, trim: true, index: true },
+    group: { type: String, default: 'home', index: true },
+    title: String,
+    subtitle: String,
+    eyebrow: String,
+    body: String,
+    image: String,
+    ctaLabel: String,
+    ctaHref: String,
+    data: { type: Object, default: {} },
+    sortOrder: { type: Number, default: 0 },
+    active: { type: Boolean, default: true },
+    updatedBy: String,
+  },
+  { timestamps: true },
+)
+
+/* ————————————————— CMS: gallery ————————————————— */
+const gallerySchema = new Schema(
+  {
+    title: { type: String, required: true },
+    caption: String,
+    image: { type: String, required: true },
+    category: { type: String, default: 'Interior' },
+    sortOrder: { type: Number, default: 0 },
+    active: { type: Boolean, default: true },
+  },
+  { timestamps: true },
+)
+
+/* ————————————————— CMS: FAQs ————————————————— */
+const faqSchema = new Schema(
+  {
+    question: { type: String, required: true },
+    answer: { type: String, required: true },
+    category: { type: String, default: 'General' },
+    sortOrder: { type: Number, default: 0 },
+    active: { type: Boolean, default: true },
+  },
+  { timestamps: true },
+)
+
+/* ————————————————— Newsletter subscribers ————————————————— */
+const subscriberSchema = new Schema(
+  {
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    source: { type: String, default: 'footer' },
+    active: { type: Boolean, default: true },
+    unsubscribedAt: Date,
+  },
+  { timestamps: true },
+)
+
+/* ————————————————— Media library (uploads) ————————————————— */
+const mediaAssetSchema = new Schema(
+  {
+    filename: { type: String, required: true },
+    url: { type: String, required: true },
+    originalName: String,
+    mimetype: String,
+    size: { type: Number, default: 0 },
+    uploadedBy: { type: Types.ObjectId, ref: 'User' },
+  },
+  { timestamps: true },
+)
+
+/* ————————————————— Audit trail for admin actions ————————————————— */
+const auditLogSchema = new Schema(
+  {
+    actor: { type: Types.ObjectId, ref: 'User' },
+    actorName: String,
+    action: { type: String, default: 'update' },
+    entity: { type: String, default: 'system' },
+    entityId: String,
+    summary: String,
+  },
+  { timestamps: true },
+)
+
+const contactSchema = new Schema(
+  { name: String, email: String, message: String, status: { type: String, default: 'new' }, handledBy: String },
+  { timestamps: true },
+)
 const emailLogSchema = new Schema(
-  { to: String, subject: String, template: String, preview: String },
+  {
+    to: String,
+    subject: String,
+    template: String,
+    preview: String,
+    status: { type: String, default: 'dev-outbox' }, // sent | dev-outbox | failed
+    error: String,
+    providerId: String,
+  },
   { timestamps: true },
 )
 const failedJobSchema = new Schema({ error: String, context: Object }, { timestamps: true })
@@ -296,6 +417,35 @@ export const Counter = model('Counter', counterSchema)
 export const Setting = model('Setting', settingSchema)
 export const ContactMessage = model('ContactMessage', contactSchema)
 export const EmailLog = model('EmailLog', emailLogSchema)
+export const Content = model('Content', contentSchema)
+export const GalleryImage = model('GalleryImage', gallerySchema)
+export const Faq = model('Faq', faqSchema)
+export const Subscriber = model('Subscriber', subscriberSchema)
+export const MediaAsset = model('MediaAsset', mediaAssetSchema)
+export const AuditLog = model('AuditLog', auditLogSchema)
+
+/* ————————————————— Helpers ————————————————— */
+
+/** Append a step to an order's public tracking timeline. */
+export function pushTimeline(order, status, note = '') {
+  const entry = { status, at: new Date(), note }
+  const timeline = Array.isArray(order.timeline) ? [...order.timeline] : []
+  if (timeline[timeline.length - 1]?.status !== status) timeline.push(entry)
+  order.timeline = timeline
+  return order
+}
+
+/** Loyalty tiers — points are awarded on delivery (1 point per $1 spent). */
+export const LOYALTY_TIERS = [
+  { name: 'Bronze', min: 0, perk: 'Member pricing on seasonal specials' },
+  { name: 'Silver', min: 250, perk: 'Free dessert on your birthday' },
+  { name: 'Gold', min: 750, perk: 'Priority kitchen queue + free delivery' },
+  { name: 'Platinum', min: 2000, perk: 'Chef’s table invitations & 5% cashback' },
+]
+
+export function tierFor(points = 0) {
+  return [...LOYALTY_TIERS].reverse().find((t) => points >= t.min)?.name || 'Bronze'
+}
 
 export async function nextOrderNumber() {
   const doc = await Counter.findOneAndUpdate(

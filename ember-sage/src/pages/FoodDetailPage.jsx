@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -17,12 +17,135 @@ import Button from '../components/ui/Button.jsx'
 import { QuantityStepper, EmptyState, Reveal } from '../components/ui/Motion.jsx'
 import { Input, Textarea } from '../components/ui/Input.jsx'
 import { FoodCard } from '../components/menu/FoodCard.jsx'
-import { CUSTOMIZATION, MENU_ITEMS } from '../data/menu.js'
+import { CUSTOMIZATION } from '../data/menu.js'
 import { useCart } from '../context/CartContext.jsx'
 import { useToast } from '../context/ToastContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useData } from '../context/MenuContext.jsx'
+import { usePageMeta } from '../lib/seo.js'
 import { api } from '../lib/api.js'
+
+/** Live reviews for this dish, plus a form for signed-in guests to add theirs. */
+function DishReviews({ item }) {
+  const toast = useToast()
+  const { user } = useAuth()
+  const [reviews, setReviews] = useState([])
+  const [rating, setRating] = useState(5)
+  const [text, setText] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const load = useCallback(() => {
+    if (!item?._id) return
+    api
+      .get(`/reviews?menuItem=${item._id}&limit=20`)
+      .then((d) => setReviews(d.reviews || []))
+      .catch(() => setReviews([]))
+  }, [item?._id])
+
+  useEffect(load, [load])
+
+  const submit = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      await api.post('/reviews', { rating, text, menuItemId: item._id, dish: item.name })
+      setText('')
+      setRating(5)
+      toast.success('Review posted', 'Thanks — it is live on this dish right away.')
+      load()
+    } catch (err) {
+      toast.error('Could not post review', err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="border-t border-ink/8 py-14 lg:py-20" aria-labelledby="dish-reviews-title">
+      <div className="grid gap-8 lg:grid-cols-[1fr_380px] lg:gap-14">
+        <div>
+          <h2 id="dish-reviews-title" className="font-display text-[clamp(1.6rem,3vw,2.2rem)] font-medium">
+            What guests <em className="font-normal text-clay italic">say</em>
+          </h2>
+          {reviews.length === 0 ? (
+            <p className="mt-4 text-[14.5px] text-warm">No reviews for this dish yet — be the first.</p>
+          ) : (
+            <ul className="mt-6 space-y-5">
+              {reviews.map((review) => (
+                <li key={review._id} className="rounded-card border border-ink/6 bg-white p-5 shadow-soft">
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-10 w-10 place-items-center rounded-full bg-beige text-[13px] font-semibold text-ink-600">
+                      {review.initials || review.name?.slice(0, 1)}
+                    </span>
+                    <div>
+                      <p className="text-[14px] font-semibold text-ink">{review.name}</p>
+                      <p className="text-[12.5px] text-warm">
+                        {new Date(review.date || review.createdAt).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })}
+                        {review.dish ? ` · ${review.dish}` : ''}
+                      </p>
+                    </div>
+                    <Rating value={review.rating} className="ml-auto" size={13} />
+                  </div>
+                  <p className="mt-3 text-[14px] leading-relaxed text-ink-600">{review.text}</p>
+                  {review.reply && (
+                    <p className="mt-3 rounded-xl bg-beige px-4 py-3 text-[13.5px] text-ink-600">
+                      <span className="font-semibold">Ember &amp; Sage replied:</span> {review.reply}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="rounded-card border border-ink/6 bg-white p-6 shadow-soft">
+          <h3 className="font-display text-lg font-medium">Rate this dish</h3>
+          {user ? (
+            <form onSubmit={submit} className="mt-4 space-y-4">
+              <div className="flex gap-1.5">
+                {[1, 2, 3, 4, 5].map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setRating(value)}
+                    aria-label={`${value} star${value > 1 ? 's' : ''}`}
+                    className={`grid h-10 w-10 cursor-pointer place-items-center rounded-xl border transition ${
+                      value <= rating ? 'border-clay bg-clay-soft text-clay' : 'border-ink/10 text-warm'
+                    }`}
+                  >
+                    <Star size={18} className={value <= rating ? 'fill-clay' : ''} />
+                  </button>
+                ))}
+              </div>
+              <Textarea
+                label="Your review"
+                rows={4}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="How was it cooked, seasoned, plated?"
+              />
+              <Button type="submit" loading={saving} disabled={text.trim().length < 10}>
+                Post review
+              </Button>
+              <p className="text-[12px] text-warm">Posted publicly with your name — 10 characters minimum.</p>
+            </form>
+          ) : (
+            <p className="mt-3 text-[13.5px] text-warm">
+              <Link to="/login" className="font-medium text-clay hover:underline">
+                Sign in
+              </Link>{' '}
+              to review this dish.
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
 
 export default function FoodDetailPage() {
   const { id } = useParams()
@@ -53,6 +176,8 @@ export default function FoodDetailPage() {
     setFav(Boolean(user?.favorites?.some((f) => String(f) === String(item._id))))
     recordView(item._id)
   }, [item?._id, user?._id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  usePageMeta(item ? { title: item.name, description: item.description?.slice(0, 155) } : undefined)
 
   const unitPrice = useMemo(() => {
     if (!item) return 0
@@ -152,7 +277,7 @@ export default function FoodDetailPage() {
           >
             <div className="relative overflow-hidden rounded-panel bg-beige shadow-lift">
               <img
-                src={item.image}
+                src={item.image || '/images/kitchen.jpg'}
                 alt={item.name}
                 onLoad={() => setImgLoaded(true)}
                 className={`aspect-[4/3] w-full object-cover transition-all duration-700 lg:aspect-[5/4] ${
@@ -311,6 +436,9 @@ export default function FoodDetailPage() {
             </p>
           </motion.div>
         </div>
+
+        {/* Reviews for this dish */}
+        <DishReviews item={item} />
 
         {/* Related */}
         {related.length > 0 && (

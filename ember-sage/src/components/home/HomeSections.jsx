@@ -19,7 +19,8 @@ import { Input, Select, Textarea } from '../ui/Input.jsx'
 import { Rating, Badge } from '../ui/Badge.jsx'
 import { Reveal, SectionHeading } from '../ui/Motion.jsx'
 import { CategoryCard, FoodCard } from '../menu/FoodCard.jsx'
-import { CATEGORIES, MENU_ITEMS, restaurant } from '../../data/menu.js'
+import { useAuth } from '../../context/AuthContext.jsx'
+import { CATEGORIES, restaurant } from '../../data/menu.js'
 import { GALLERY, REVIEWS } from '../../data/site.js'
 import { useToast } from '../../context/ToastContext.jsx'
 import { useData } from '../../context/MenuContext.jsx'
@@ -28,20 +29,26 @@ import { api } from '../../lib/api.js'
 /* —————————— Categories —————————— */
 export function FeaturedCategories() {
   const navigate = useNavigate()
-  const { categories } = useData()
+  const { categories, getContent } = useData()
+  const copy = getContent('home.categories', {
+    eyebrow: 'Browse by craving',
+    title: 'What are you in the mood for?',
+    subtitle: 'Eight kitchens\u2019 worth of choice \u2014 tap a category to jump straight into the menu.',
+  })
   const list = categories.length ? categories : CATEGORIES
   return (
     <section className="mx-auto max-w-[1440px] px-5 py-20 lg:px-10 lg:py-28" aria-labelledby="categories-title">
       <div className="mb-10 flex flex-wrap items-end justify-between gap-5 lg:mb-14">
         <SectionHeading
           align="left"
-          eyebrow="Browse by craving"
+          eyebrow={copy.eyebrow}
           title={
             <span id="categories-title">
-              What are you <em className="font-normal text-clay italic">in the mood for?</em>
+              {String(copy.title || '').replace(copy.data?.titleEmphasis || '', '')}
+              {copy.data?.titleEmphasis && <em className="font-normal text-clay italic">{copy.data.titleEmphasis}</em>}
             </span>
           }
-          subtitle="Eight kitchens’ worth of choice — tap a category to jump straight into the menu."
+          subtitle={copy.subtitle}
         />
         <Reveal delay={0.1}>
           <Link
@@ -72,8 +79,15 @@ export function FeaturedCategories() {
 
 /* —————————— Chef’s favorites —————————— */
 export function ChefFavorites() {
-  const { menuItems } = useData()
-  const featured = menuItems.filter((m) => m.featured).slice(0, 6)
+  const { menuItems, getContent } = useData()
+  const copy = getContent('home.featured', {
+    eyebrow: 'Chef’s favorites',
+    title: 'Loved by regulars, crafted by chefs',
+    subtitle: 'The dishes our kitchen is proudest of — seasonal, signature, and consistently ordered twice.',
+    data: { titleEmphasis: 'crafted by chefs', ctaLabel: 'Explore the full menu', limit: 6 },
+  })
+  const limit = copy.data?.limit || 6
+  const featured = menuItems.filter((m) => m.featured).slice(0, limit)
   if (menuItems.length === 0) {
     return (
       <section className="relative bg-beige/70 py-20 lg:py-28">
@@ -89,9 +103,14 @@ export function ChefFavorites() {
     <section className="relative bg-beige/70 py-20 lg:py-28" aria-labelledby="favorites-title">
       <div className="mx-auto max-w-[1440px] px-5 lg:px-10">
         <SectionHeading
-          eyebrow="Chef’s favorites"
-          title={<span id="favorites-title">Loved by regulars, <em className="font-normal italic text-clay">crafted by chefs</em></span>}
-          subtitle="The dishes our kitchen is proudest of — seasonal, signature, and consistently ordered twice."
+          eyebrow={copy.eyebrow}
+          title={
+            <span id="favorites-title">
+              {String(copy.title || '').replace(copy.data?.titleEmphasis || '', '')}
+              {copy.data?.titleEmphasis && <em className="font-normal italic text-clay">{copy.data.titleEmphasis}</em>}
+            </span>
+          }
+          subtitle={copy.subtitle}
         />
         <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:mt-14 lg:grid-cols-3">
           {featured.map((item, i) => (
@@ -101,7 +120,7 @@ export function ChefFavorites() {
         <Reveal className="mt-10 text-center lg:mt-12">
           <Link to="/menu">
             <Button size="lg" variant="dark">
-              Explore the full menu <ArrowRight size={16} />
+              {copy.data?.ctaLabel || 'Explore the full menu'} <ArrowRight size={16} />
             </Button>
           </Link>
         </Reveal>
@@ -112,46 +131,73 @@ export function ChefFavorites() {
 
 /* —————————— About preview —————————— */
 export function AboutPreview() {
+  const { getContent } = useData()
+  const siteStats = getContent('site.stats', { data: { items: restaurant.stats } })
+  const copy = getContent('home.about', {
+    eyebrow: 'Our story',
+    title: 'More than just a meal',
+    image: '/images/chef.jpg',
+    ctaLabel: 'Read our full story',
+    ctaHref: '/about',
+    data: {
+      titleEmphasis: 'meal',
+      imageAlt: 'Chef plating a dish in the Ember & Sage kitchen',
+      secondaryImage: '/images/interior.jpg',
+      badgeValue: '15+',
+      badgeLabel: 'Years crafting',
+      paragraphs: [
+        'Since 2011, Ember & Sage has been a quiet obsession for Islamabad’s diners — a place where open-flame cooking meets garden-fresh produce, and every plate tells a story of patience.',
+        'Chef Amina Rahman and her team bake bread at dawn, mill their own spices, and source herbs from partner farms in the Margalla foothills. Nothing rushed, nothing ordinary.',
+      ],
+    },
+  })
+  const stats = siteStats.data?.items?.length ? siteStats.data.items : restaurant.stats
+  const paragraphs = copy.data?.paragraphs?.length ? copy.data.paragraphs : ['']
+
   return (
     <section className="mx-auto max-w-[1440px] px-5 py-20 lg:px-10 lg:py-28" aria-labelledby="about-title">
       <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
         <Reveal className="relative">
           <div className="overflow-hidden rounded-panel shadow-lift">
             <img
-              src="/images/chef.jpg"
-              alt="Chef plating a dish in the Ember & Sage kitchen"
+              src={copy.image || '/images/chef.jpg'}
+              alt={copy.data?.imageAlt || 'Chef plating a dish in the Ember & Sage kitchen'}
               className="aspect-[4/5] w-full object-cover transition-transform duration-700 hover:scale-[1.04] sm:aspect-[5/5]"
               loading="lazy"
             />
           </div>
-          <div className="absolute -right-3 -bottom-6 hidden w-44 overflow-hidden rounded-2xl border-4 border-cream shadow-lift sm:block lg:w-52">
-            <img src="/images/interior.jpg" alt="Restaurant interior" className="aspect-[4/5] w-full object-cover" loading="lazy" />
-          </div>
+          {copy.data?.secondaryImage && (
+            <div className="absolute -right-3 -bottom-6 hidden w-44 overflow-hidden rounded-2xl border-4 border-cream shadow-lift sm:block lg:w-52">
+              <img src={copy.data.secondaryImage} alt="Restaurant interior" className="aspect-[4/5] w-full object-cover" loading="lazy" />
+            </div>
+          )}
           <div className="absolute -top-5 -left-3 hidden rounded-2xl bg-ink px-5 py-4 text-cream shadow-lift sm:block">
-            <p className="font-display text-3xl font-medium text-clay">{restaurant.stats[0].value}</p>
-            <p className="text-[11px] tracking-[0.14em] text-cream/60 uppercase">Years crafting</p>
+            <p className="font-display text-3xl font-medium text-clay">{copy.data?.badgeValue || stats[0]?.value}</p>
+            <p className="text-[11px] tracking-[0.14em] text-cream/60 uppercase">{copy.data?.badgeLabel || 'Years crafting'}</p>
           </div>
         </Reveal>
 
         <div>
           <SectionHeading
             align="left"
-            eyebrow="Our story"
-            title={<span id="about-title">More than just a <em className="font-normal italic text-clay">meal</em></span>}
+            eyebrow={copy.eyebrow}
+            title={
+              <span id="about-title">
+                {String(copy.title || '').replace(copy.data?.titleEmphasis || '', '')}
+                {copy.data?.titleEmphasis && <em className="font-normal italic text-clay">{copy.data.titleEmphasis}</em>}
+              </span>
+            }
           />
           <Reveal delay={0.08}>
-            <p className="mt-5 text-[15.5px] leading-relaxed text-ink-600">
-              Since 2011, Ember &amp; Sage has been a quiet obsession for Islamabad’s diners — a place where
-              open-flame cooking meets garden-fresh produce, and every plate tells a story of patience.
-            </p>
-            <p className="mt-4 text-[15.5px] leading-relaxed text-warm">
-              Chef Amina Rahman and her team bake bread at dawn, mill their own spices, and source herbs from
-              partner farms in the Margalla foothills. Nothing rushed, nothing ordinary.
-            </p>
+            {paragraphs.map((paragraph, index) => (
+              <p key={index} className={index === 0 ? 'mt-5 text-[15.5px] leading-relaxed text-ink-600' : 'mt-4 text-[15.5px] leading-relaxed text-warm'}>
+                {paragraph}
+              </p>
+            ))}
           </Reveal>
 
           <div className="mt-8 grid grid-cols-2 gap-3.5 sm:grid-cols-4">
-            {restaurant.stats.map((s, i) => (
+            {stats.map((s, i) => (
               <Reveal key={s.label} delay={0.1 + i * 0.06}>
                 <div className="rounded-2xl border border-ink/6 bg-white px-4 py-4 text-center shadow-soft">
                   <p className="font-display text-[26px] leading-none font-medium text-ink">{s.value}</p>
@@ -164,8 +210,8 @@ export function AboutPreview() {
           </div>
 
           <Reveal delay={0.3}>
-            <Link to="/about" className="group mt-8 inline-flex items-center gap-2 text-sm font-semibold text-clay">
-              Read our full story
+            <Link to={copy.ctaHref || '/about'} className="group mt-8 inline-flex items-center gap-2 text-sm font-semibold text-clay">
+              {copy.ctaLabel || 'Read our full story'}
               <ArrowRight size={15} className="transition-transform group-hover:translate-x-1" />
             </Link>
           </Reveal>
@@ -178,20 +224,32 @@ export function AboutPreview() {
 /* —————————— Gallery preview —————————— */
 export function GalleryPreview() {
   const navigate = useNavigate()
-  const shots = GALLERY.slice(0, 6)
+  const { gallery, getContent } = useData()
+  const copy = getContent('home.gallery', {
+    eyebrow: 'The gallery',
+    title: 'A glimpse inside the house',
+    subtitle: 'Warm light, open flames, and rooms made for lingering.',
+    data: { titleEmphasis: 'the house', ctaLabel: 'View full gallery' },
+  })
+  const shots = (gallery.length ? gallery : GALLERY).slice(0, 6)
   return (
     <section className="bg-ink py-20 lg:py-28" aria-labelledby="gallery-title">
       <div className="mx-auto max-w-[1440px] px-5 lg:px-10">
         <SectionHeading
           light
-          eyebrow="The gallery"
-          title={<span id="gallery-title">A glimpse inside <em className="font-normal italic text-clay">the house</em></span>}
-          subtitle="Warm light, open flames, and rooms made for lingering."
+          eyebrow={copy.eyebrow}
+          title={
+            <span id="gallery-title">
+              {String(copy.title || '').replace(copy.data?.titleEmphasis || '', '')}
+              {copy.data?.titleEmphasis && <em className="font-normal italic text-clay">{copy.data.titleEmphasis}</em>}
+            </span>
+          }
+          subtitle={copy.subtitle}
         />
         <div className="mt-10 grid auto-rows-[150px] grid-cols-2 gap-3.5 sm:auto-rows-[190px] lg:grid-cols-4 lg:grid-rows-2">
           {shots.map((g, i) => (
             <motion.button
-              key={g.id}
+              key={g._id || g.id}
               type="button"
               initial={{ opacity: 0, scale: 0.94 }}
               whileInView={{ opacity: 1, scale: 1 }}
@@ -201,17 +259,17 @@ export function GalleryPreview() {
               className={`group relative overflow-hidden rounded-2xl cursor-pointer ${
                 i === 0 ? 'lg:row-span-2 lg:col-span-1' : i === 3 ? 'lg:col-span-2' : ''
               } ${i === 0 ? 'row-span-2' : ''}`}
-              aria-label={`Open gallery — ${g.alt}`}
+              aria-label={`Open gallery — ${g.title || g.alt}`}
             >
               <img
-                src={g.src}
-                alt={g.alt}
+                src={g.image || g.src || '/images/kitchen.jpg'}
+                alt={g.title || g.alt || 'Ember & Sage'}
                 loading="lazy"
                 className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
               />
               <span className="absolute inset-0 bg-ink/0 transition group-hover:bg-ink/35" />
               <span className="absolute bottom-3 left-3 translate-y-2 rounded-full bg-cream/95 px-3 py-1 text-[11px] font-semibold text-ink opacity-0 transition-all duration-400 group-hover:translate-y-0 group-hover:opacity-100">
-                {g.tag}
+                {g.category || g.tag}
               </span>
             </motion.button>
           ))}
@@ -219,7 +277,7 @@ export function GalleryPreview() {
         <Reveal className="mt-8 text-center">
           <Link to="/gallery">
             <Button variant="outline-light" size="lg">
-              View full gallery
+              {copy.data?.ctaLabel || 'View full gallery'}
             </Button>
           </Link>
         </Reveal>
@@ -233,6 +291,15 @@ export function ReviewsSection() {
   const [index, setIndex] = useState(0)
   const [dir, setDir] = useState(1)
   const [reviews, setReviews] = useState(REVIEWS)
+  const { stats, getContent } = useData()
+  const copy = getContent('home.reviews', {
+    eyebrow: 'Guest stories',
+    title: 'Rated 4.9 by our guests',
+    subtitle: 'Reviews from dine-in, pickup and delivery customers.',
+    data: { titleEmphasis: '4.9' },
+  })
+  const average = stats.rating || 4.9
+  const total = stats.reviewCount || 0
 
   useEffect(() => {
     let alive = true
@@ -263,13 +330,17 @@ export function ReviewsSection() {
       <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-end">
         <SectionHeading
           align="left"
-          eyebrow="Guest stories"
-          title={<span id="reviews-title">Rated <em className="font-normal italic text-clay">4.9</em> by our guests</span>}
-          subtitle={`${restaurant.reviewCount.toLocaleString()} reviews from dine-in, pickup and delivery customers.`}
+          eyebrow={copy.eyebrow}
+          title={
+            <span id="reviews-title">
+              Rated <em className="font-normal italic text-clay">{average}</em> by our guests
+            </span>
+          }
+          subtitle={`${total.toLocaleString()} reviews from dine-in, pickup and delivery customers.`}
         />
         <Reveal className="flex items-center gap-4">
           <div className="rounded-2xl border border-ink/8 bg-white px-5 py-4 text-center shadow-soft">
-            <p className="font-display text-4xl leading-none font-medium text-ink">{restaurant.rating}</p>
+            <p className="font-display text-4xl leading-none font-medium text-ink">{average}</p>
             <div className="mt-1.5 flex justify-center gap-0.5">
               {Array.from({ length: 5 }).map((_, i) => (
                 <Star key={i} size={13} className="fill-clay text-clay" strokeWidth={0} />
@@ -333,10 +404,31 @@ export function ReviewsSection() {
 
 /* —————————— Reservation —————————— */
 export function ReservationSection() {
+  const { settings, getContent } = useData()
+  const copy = getContent('home.reservation', {
+    eyebrow: 'Reservations',
+    title: 'Save your table at the house',
+    subtitle: 'Intimate dinners, celebrations, or a quiet corner for two — we’ll have it ready.',
+    image: '/images/ambiance.jpg',
+    data: { titleEmphasis: 'the house', formNote: 'We’ll confirm within 30 minutes during opening hours.' },
+  })
+  const hours = settings.hours?.length ? settings.hours : restaurant.hours
   const [done, setDone] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', phone: '', date: '', time: '7:30 PM', guests: '2', notes: '' })
   const [errors, setErrors] = useState({})
   const toast = useToast()
+  const { user } = useAuth()
+
+  /** Signed-in guests never retype their details, and the booking is linked to their account. */
+  useEffect(() => {
+    if (!user) return
+    setForm((f) => ({
+      ...f,
+      name: f.name || `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+      email: f.email || user.email || '',
+      phone: f.phone || user.phone || '',
+    }))
+  }, [user])
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
@@ -361,7 +453,7 @@ export function ReservationSection() {
   return (
     <section className="relative overflow-hidden bg-ink py-20 lg:py-28" aria-labelledby="reserve-title">
       <img
-        src="/images/ambiance.jpg"
+        src={copy.image || '/images/ambiance.jpg'}
         alt=""
         aria-hidden
         className="absolute inset-0 h-full w-full object-cover object-center opacity-25"
@@ -374,12 +466,17 @@ export function ReservationSection() {
           <SectionHeading
             light
             align="left"
-            eyebrow="Reservations"
-            title={<span id="reserve-title">Save your table at <em className="font-normal italic text-clay">the house</em></span>}
-            subtitle="Intimate dinners, celebrations, or a quiet corner for two — we’ll have it ready."
+            eyebrow={copy.eyebrow}
+            title={
+              <span id="reserve-title">
+                {String(copy.title || '').replace(copy.data?.titleEmphasis || '', '')}
+                {copy.data?.titleEmphasis && <em className="font-normal italic text-clay">{copy.data.titleEmphasis}</em>}
+              </span>
+            }
+            subtitle={copy.subtitle}
           />
           <Reveal delay={0.1} className="mt-8 space-y-3.5">
-            {restaurant.hours.map((h) => (
+            {hours.map((h) => (
               <p key={h.days} className="flex items-center justify-between border-b border-cream/10 pb-3 text-[14.5px]">
                 <span className="text-cream/60">{h.days}</span>
                 <span className="font-medium text-cream">{h.time}</span>
@@ -414,7 +511,7 @@ export function ReservationSection() {
               ) : (
                 <motion.form key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} onSubmit={submit} noValidate>
                   <h3 className="font-display text-[22px] font-medium">Reserve a Table</h3>
-                  <p className="mt-1 text-[13.5px] text-warm">We’ll confirm within 30 minutes during opening hours.</p>
+                  <p className="mt-1 text-[13.5px] text-warm">{copy.data?.formNote || 'We’ll confirm within 30 minutes during opening hours.'}</p>
                   <div className="mt-5 grid gap-4 sm:grid-cols-2">
                     <Input label="Name" required placeholder="Your full name" value={form.name} onChange={set('name')} error={errors.name} />
                     <Input label="Email" type="email" required placeholder="you@email.com" value={form.email} onChange={set('email')} error={errors.email} />
@@ -456,6 +553,18 @@ export function ReservationSection() {
 
 /* —————————— Contact strip —————————— */
 export function ContactSection() {
+  const { settings, getContent } = useData()
+  const copy = getContent('home.contact', {
+    eyebrow: 'Contact',
+    title: 'Say hello',
+    subtitle: 'Questions, private events, or feedback — we read every message.',
+    data: { titleEmphasis: 'hello' },
+  })
+  const details = [
+    { icon: MapPin, label: 'Address', value: settings.address },
+    { icon: Phone, label: 'Phone', value: settings.phone },
+    { icon: Mail, label: 'Email', value: settings.email },
+  ]
   const [sent, setSent] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', message: '' })
   const [errors, setErrors] = useState({})
@@ -484,16 +593,17 @@ export function ContactSection() {
         <div>
           <SectionHeading
             align="left"
-            eyebrow="Contact"
-            title={<span id="contact-title">Say <em className="font-normal italic text-clay">hello</em></span>}
-            subtitle="Questions, private events, or feedback — we read every message."
+            eyebrow={copy.eyebrow}
+            title={
+              <span id="contact-title">
+                {String(copy.title || '').replace(copy.data?.titleEmphasis || '', '')}
+                {copy.data?.titleEmphasis && <em className="font-normal italic text-clay">{copy.data.titleEmphasis}</em>}
+              </span>
+            }
+            subtitle={copy.subtitle}
           />
           <Reveal delay={0.08} className="mt-8 space-y-4">
-            {[
-              { icon: MapPin, label: 'Address', value: restaurant.address },
-              { icon: Phone, label: 'Phone', value: restaurant.phone },
-              { icon: Mail, label: 'Email', value: restaurant.email },
-            ].map((c) => (
+            {details.map((c) => (
               <div key={c.label} className="flex items-start gap-4 rounded-2xl border border-ink/6 bg-white p-4 shadow-soft">
                 <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-clay-soft text-clay">
                   <c.icon size={18} strokeWidth={1.8} />
@@ -577,11 +687,24 @@ export function ContactSection() {
 
 /* —————————— Value props band —————————— */
 export function ValueBand() {
-  const items = [
-    { title: 'Farm-fresh daily', text: 'Produce from Margalla partner farms, delivered each morning.' },
-    { title: '30-minute delivery', text: 'Insulated bags and live routing keep every dish restaurant-hot.' },
-    { title: 'Open-flame kitchen', text: 'Charcoal, cast iron and wood — flavor you can hear sizzle.' },
-  ]
+  const { getContent } = useData()
+  const copy = getContent('home.values', {
+    title: 'Why guests keep coming back',
+    data: {
+      items: [
+        { title: 'Farm-fresh daily', text: 'Produce from Margalla partner farms, delivered each morning.' },
+        { title: '30-minute delivery', text: 'Insulated bags and live routing keep every dish restaurant-hot.' },
+        { title: 'Open-flame kitchen', text: 'Charcoal, cast iron and wood — flavor you can hear sizzle.' },
+      ],
+    },
+  })
+  const items = copy.data?.items?.length
+    ? copy.data.items
+    : [
+        { title: 'Farm-fresh daily', text: 'Produce from Margalla partner farms, delivered each morning.' },
+        { title: '30-minute delivery', text: 'Insulated bags and live routing keep every dish restaurant-hot.' },
+        { title: 'Open-flame kitchen', text: 'Charcoal, cast iron and wood — flavor you can hear sizzle.' },
+      ]
   return (
     <section className="border-y border-ink/6 bg-white/60">
       <div className="mx-auto grid max-w-[1440px] gap-6 px-5 py-10 sm:grid-cols-3 lg:px-10">

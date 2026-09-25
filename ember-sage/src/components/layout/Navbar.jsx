@@ -20,6 +20,7 @@ import Button from '../ui/Button.jsx'
 import { useCart } from '../../context/CartContext.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useNotifications } from '../../context/NotificationsContext.jsx'
+import { useData } from '../../context/MenuContext.jsx'
 import { restaurant } from '../../data/menu.js'
 
 const NAV_LINKS = [
@@ -38,6 +39,8 @@ export default function Navbar({ onOpenSearch }) {
   const { totals, openCart } = useCart()
   const { user, logout } = useAuth()
   const { notifications, unreadCount, markAllRead } = useNotifications()
+  const { settings, stats, getContent } = useData()
+  const announcement = getContent('site.announcement', {})
   const location = useLocation()
   const navigate = useNavigate()
   const notifRef = useRef(null)
@@ -84,6 +87,21 @@ export default function Navbar({ onOpenSearch }) {
 
   return (
     <>
+      {announcement.active && (announcement.title || announcement.subtitle) && (
+        <div className={`relative z-40 px-5 py-2 text-center text-[12.5px] font-medium ${announcement.data?.tone === 'olive' ? 'bg-olive text-cream' : 'bg-clay text-white'}`}>
+          {announcement.data?.href ? (
+            <Link to={announcement.data.href} className="hover:underline">
+              {announcement.title}
+              {announcement.subtitle ? ` — ${announcement.subtitle}` : ''}
+            </Link>
+          ) : (
+            <span>
+              {announcement.title}
+              {announcement.subtitle ? ` — ${announcement.subtitle}` : ''}
+            </span>
+          )}
+        </div>
+      )}
       <header
         className={`fixed inset-x-0 top-0 z-[80] transition-all duration-500 ${
           solid
@@ -391,8 +409,10 @@ export default function Navbar({ onOpenSearch }) {
                   <p className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.18em] text-olive uppercase">
                     <Clock3 size={13} /> Open Today
                   </p>
-                  <p className="mt-1.5 text-sm font-medium text-ink">{restaurant.openToday}</p>
-                  <p className="mt-1 text-[13px] text-warm">{restaurant.city} · ★ {restaurant.rating}</p>
+                  <p className="mt-1.5 text-sm font-medium text-ink">{settings.openToday || restaurant.openToday}</p>
+                  <p className="mt-1 text-[13px] text-warm">
+                    {settings.city || restaurant.city} · ★ {stats.rating || restaurant.rating}
+                  </p>
                 </div>
               </nav>
 

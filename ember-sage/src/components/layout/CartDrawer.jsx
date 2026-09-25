@@ -22,7 +22,7 @@ export function CartLine({ line, compact = false }) {
     >
       <Link to={`/menu/${line.id}`} className="shrink-0" onClick={() => {}}>
         <img
-          src={line.image}
+          src={line.image || '/images/kitchen.jpg'}
           alt=""
           className={`rounded-xl object-cover ${compact ? 'h-16 w-16' : 'h-20 w-20'}`}
           loading="lazy"

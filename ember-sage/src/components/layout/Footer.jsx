@@ -5,6 +5,8 @@ import Logo from './Logo.jsx'
 import Button from '../ui/Button.jsx'
 import { restaurant } from '../../data/menu.js'
 import { useToast } from '../../context/ToastContext.jsx'
+import { useData } from '../../context/MenuContext.jsx'
+import { api } from '../../lib/api.js'
 
 const COLUMNS = [
   {
@@ -37,7 +39,9 @@ const COLUMNS = [
   },
 ]
 
-const SOCIALS = [
+const SOCIAL_ICONS = { instagram: Instagram, facebook: Facebook, tiktok: Music2, youtube: Youtube }
+
+const DEFAULT_SOCIALS = [
   { icon: Instagram, label: 'Instagram', href: '#' },
   { icon: Facebook, label: 'Facebook', href: '#' },
   { icon: Music2, label: 'TikTok', href: '#' },
@@ -46,16 +50,38 @@ const SOCIALS = [
 
 export default function Footer() {
   const [email, setEmail] = useState('')
+  const [sending, setSending] = useState(false)
   const toast = useToast()
+  const { settings, getContent } = useData()
 
-  const subscribe = (e) => {
+  const newsletter = getContent('footer.newsletter', {
+    eyebrow: 'Newsletter',
+    title: 'Get delicious updates',
+    subtitle: 'Seasonal menus, chef’s specials and members-only offers — no spam, just flavor.',
+    data: { placeholder: 'Your email address', ctaLabel: 'Subscribe' },
+  })
+  const socialBlock = getContent('site.socials', { data: { items: [] } })
+  const socials = socialBlock.data?.items?.length
+    ? socialBlock.data.items.map((s) => ({ ...s, icon: SOCIAL_ICONS[s.icon] || Instagram }))
+    : DEFAULT_SOCIALS
+  const hours = settings.hours?.length ? settings.hours : restaurant.hours
+
+  const subscribe = async (e) => {
     e.preventDefault()
     if (!/^\S+@\S+\.\S+$/.test(email)) {
       toast.error('Enter a valid email', 'We need a valid address to send delicious updates.')
       return
     }
-    toast.success('You’re subscribed!', 'Fresh menus and offers are headed your way.')
-    setEmail('')
+    setSending(true)
+    try {
+      const data = await api.post('/subscribers', { email, source: 'footer' })
+      toast.success('You’re subscribed!', data.message || 'Fresh menus and offers are headed your way.')
+      setEmail('')
+    } catch (error) {
+      toast.error('Could not subscribe', error.message)
+    } finally {
+      setSending(false)
+    }
   }
 
   return (
@@ -67,13 +93,11 @@ export default function Footer() {
         {/* Newsletter band */}
         <div className="grid items-center gap-8 border-b border-cream/10 py-12 lg:grid-cols-2 lg:py-14">
           <div>
-            <p className="text-[11px] font-semibold tracking-[0.22em] text-clay uppercase">Newsletter</p>
+            <p className="text-[11px] font-semibold tracking-[0.22em] text-clay uppercase">{newsletter.eyebrow}</p>
             <h3 className="mt-3 font-display text-[clamp(1.6rem,3vw,2.2rem)] leading-tight font-medium">
-              Get delicious updates
+              {newsletter.title}
             </h3>
-            <p className="mt-2 max-w-md text-[14.5px] leading-relaxed text-cream/55">
-              Seasonal menus, chef’s specials and members-only offers — no spam, just flavor.
-            </p>
+            <p className="mt-2 max-w-md text-[14.5px] leading-relaxed text-cream/55">{newsletter.subtitle}</p>
           </div>
           <form onSubmit={subscribe} className="flex w-full flex-col gap-3 sm:flex-row" noValidate>
             <label htmlFor="footer-email" className="sr-only">
@@ -84,11 +108,11 @@ export default function Footer() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="Your email address"
+              placeholder={newsletter.data?.placeholder || 'Your email address'}
               className="h-13 min-w-0 flex-1 rounded-full border border-cream/15 bg-cream/5 px-6 py-4 text-[15px] text-cream placeholder:text-cream/40 outline-none transition focus:border-clay focus:bg-cream/10"
             />
-            <Button type="submit" size="lg" variant="primary" className="sm:w-auto">
-              Subscribe <ArrowRight size={16} />
+            <Button type="submit" size="lg" variant="primary" className="sm:w-auto" disabled={sending}>
+              {sending ? 'Subscribing…' : newsletter.data?.ctaLabel || 'Subscribe'} <ArrowRight size={16} />
             </Button>
           </form>
         </div>
@@ -98,11 +122,11 @@ export default function Footer() {
           <div className="lg:col-span-4">
             <Logo light />
             <p className="mt-5 max-w-sm text-[14.5px] leading-relaxed text-cream/55">
-              {restaurant.description} A modern kitchen in the heart of {restaurant.city}, open late for
-              dine-in, pickup and delivery.
+              {settings.tagline || restaurant.description} A modern kitchen in the heart of {settings.city || restaurant.city},
+              open late for dine-in, pickup and delivery.
             </p>
             <div className="mt-6 flex gap-2.5">
-              {SOCIALS.map((s) => (
+              {socials.map((s) => (
                 <a
                   key={s.label}
                   href={s.href}
@@ -115,13 +139,13 @@ export default function Footer() {
             </div>
             <ul className="mt-7 space-y-2.5 text-[13.5px] text-cream/55">
               <li className="flex items-start gap-2.5">
-                <MapPin size={15} className="mt-0.5 shrink-0 text-clay" /> {restaurant.address}
+                <MapPin size={15} className="mt-0.5 shrink-0 text-clay" /> {settings.address || restaurant.address}
               </li>
               <li className="flex items-center gap-2.5">
-                <Phone size={15} className="shrink-0 text-clay" /> {restaurant.phone}
+                <Phone size={15} className="shrink-0 text-clay" /> {settings.phone || restaurant.phone}
               </li>
               <li className="flex items-center gap-2.5">
-                <Mail size={15} className="shrink-0 text-clay" /> {restaurant.email}
+                <Mail size={15} className="shrink-0 text-clay" /> {settings.email || restaurant.email}
               </li>
             </ul>
           </div>
@@ -148,7 +172,7 @@ export default function Footer() {
           <div className="lg:col-span-2">
             <h4 className="text-[11px] font-semibold tracking-[0.2em] text-cream/40 uppercase">Hours</h4>
             <ul className="mt-5 space-y-3.5">
-              {restaurant.hours.map((h) => (
+              {hours.map((h) => (
                 <li key={h.days} className="text-[13.5px]">
                   <p className="font-medium text-cream/85">{h.days}</p>
                   <p className="text-cream/50">{h.time}</p>
@@ -160,10 +184,10 @@ export default function Footer() {
 
         {/* Bottom */}
         <div className="flex flex-col items-center justify-between gap-4 border-t border-cream/10 py-7 sm:flex-row">
-          <p className="text-[13px] text-cream/45">© 2026 Ember &amp; Sage. All rights reserved.</p>
-          <p className="text-[12px] text-cream/35">
-            Crafted for MERN implementation · React · Express · MongoDB
+          <p className="text-[13px] text-cream/45">
+            © {new Date().getFullYear()} {settings.name || restaurant.name}. All rights reserved.
           </p>
+          <p className="text-[12px] text-cream/35">React · Express · MongoDB · Fully headless CMS</p>
         </div>
       </div>
     </footer>

@@ -328,9 +328,9 @@ export default function CheckoutPage() {
                           <p className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.16em] text-clay uppercase">
                             <Store size={13} /> Pickup location
                           </p>
-                          <p className="mt-1.5 text-[15px] font-medium text-ink">{restaurant.name}</p>
-                          <p className="text-[13.5px] text-warm">{restaurant.address}</p>
-                          <p className="text-[13.5px] text-warm">{restaurant.phone}</p>
+                          <p className="mt-1.5 text-[15px] font-medium text-ink">{settings.name || restaurant.name}</p>
+                          <p className="text-[13.5px] text-warm">{settings.address || restaurant.address}</p>
+                          <p className="text-[13.5px] text-warm">{settings.phone || restaurant.phone}</p>
                         </div>
                         <Select label="Pickup time" value={form.pickupTime} onChange={set('pickupTime')} className="sm:min-w-52">
                           {['ASAP (15–25 min)', 'In 30 minutes', 'In 45 minutes', 'In 1 hour', 'Tonight, 7:00 PM', 'Tonight, 8:30 PM'].map((t) => (
@@ -487,7 +487,7 @@ export default function CheckoutPage() {
               <ul className="mt-4 max-h-64 space-y-3 overflow-y-auto pr-1">
                 {items.map((l) => (
                   <li key={l.key} className="flex items-center gap-3">
-                    <img src={l.image} alt="" className="h-12 w-12 rounded-lg object-cover" />
+                    <img src={l.image || '/images/kitchen.jpg'} alt="" className="h-12 w-12 rounded-lg object-cover" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[13.5px] font-medium text-ink">{l.name}</p>
                       <p className="text-[12px] text-warm">

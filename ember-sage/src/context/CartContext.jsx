@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api.js'
 import { useAuth } from './AuthContext.jsx'
-import { DELIVERY_FEE, FREE_DELIVERY_THRESHOLD, TAX_RATE, COUPONS } from '../data/menu.js'
+import { useData } from './MenuContext.jsx'
+import { DELIVERY_FEE, FREE_DELIVERY_THRESHOLD, TAX_RATE } from '../data/menu.js'
 
 const CartContext = createContext(null)
 
@@ -55,10 +56,13 @@ function fromApiCart(cart) {
 
 export function CartProvider({ children }) {
   const { user } = useAuth()
+  const { settings } = useData()
+  const [offers, setOffers] = useState([])
   const [items, setItems] = useState(() => (user ? [] : loadGuestItems()))
   const [coupon, setCoupon] = useState(null)
   const [isOpen, setIsOpen] = useState(false)
   const [justAddedKey, setJustAddedKey] = useState(null)
+  const [serverTotals, setServerTotals] = useState(null)
   const [hydrated, setHydrated] = useState(false)
   const syncTimer = useRef(null)
   const userRef = useRef(user)
@@ -73,8 +77,21 @@ export function CartProvider({ children }) {
     syncTimer.current = setTimeout(() => {
       api
         .put('/cart', { items: toApiItems(nextItems), couponCode: nextCoupon?.code || null })
+        .then((d) => setServerTotals(d.totals || null))
         .catch(() => {})
     }, 350)
+  }, [])
+
+  /* —— Live list of active promo codes (managed in the admin CMS) —— */
+  useEffect(() => {
+    let alive = true
+    api
+      .get('/coupons')
+      .then((d) => alive && setOffers(d.coupons || []))
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
   }, [])
 
   /* —— Load / merge cart when auth state changes —— */
@@ -90,12 +107,14 @@ export function CartProvider({ children }) {
             if (!alive || cartVersion.current !== startedAt) return
             setItems(fromApiCart(d.cart))
             setCoupon(d.cart.coupon?.code ? { ...d.cart.coupon } : null)
+            setServerTotals(d.totals || null)
             localStorage.removeItem(STORAGE_KEY)
           } else {
             const d = await api.get('/cart')
             if (!alive || cartVersion.current !== startedAt) return
             setItems(fromApiCart(d.cart))
             setCoupon(d.cart.coupon?.code ? { ...d.cart.coupon } : null)
+            setServerTotals(d.totals || null)
           }
         } catch {
           if (alive && cartVersion.current === startedAt) setItems(guest)
@@ -220,11 +239,15 @@ export function CartProvider({ children }) {
     return line.price + addonTotal + sizeDelta
   }, [])
 
+  const deliveryFeeRate = settings.deliveryFee ?? DELIVERY_FEE
+  const freeThreshold = settings.freeDeliveryThreshold ?? FREE_DELIVERY_THRESHOLD
+  const taxRate = settings.taxRate ?? TAX_RATE
+
   const totals = useMemo(() => {
     const subtotal = items.reduce((s, l) => s + lineUnitPrice(l) * l.qty, 0)
     const count = items.reduce((s, l) => s + l.qty, 0)
 
-    let deliveryFee = subtotal === 0 ? 0 : subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE
+    let deliveryFee = subtotal === 0 ? 0 : subtotal >= freeThreshold ? 0 : deliveryFeeRate
     let discount = 0
 
     if (coupon) {
@@ -238,11 +261,11 @@ export function CartProvider({ children }) {
     }
 
     const taxable = Math.max(subtotal - discount, 0)
-    const tax = +(taxable * TAX_RATE).toFixed(2)
+    const tax = +(taxable * taxRate).toFixed(2)
     const total = +(taxable + tax + deliveryFee).toFixed(2)
 
     return { subtotal: +subtotal.toFixed(2), deliveryFee, tax, discount, total, count }
-  }, [items, coupon, lineUnitPrice])
+  }, [items, coupon, lineUnitPrice, deliveryFeeRate, freeThreshold, taxRate])
 
   const value = useMemo(
     () => ({
@@ -262,9 +285,12 @@ export function CartProvider({ children }) {
       totals,
       lineUnitPrice,
       toApiItems,
-      localCoupons: COUPONS,
+      offers,
+      refreshOffers: () => api.get('/coupons').then((d) => setOffers(d.coupons || [])).catch(() => {}),
+      freeDeliveryThreshold: freeThreshold,
+      serverTotals,
     }),
-    [items, isOpen, hydrated, justAddedKey, openCart, closeCart, addItem, removeItem, setQty, clearCart, applyCoupon, removeCoupon, coupon, totals, lineUnitPrice],
+    [items, isOpen, hydrated, justAddedKey, openCart, closeCart, addItem, removeItem, setQty, clearCart, applyCoupon, removeCoupon, coupon, totals, lineUnitPrice, offers, serverTotals, freeThreshold],
   )
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>

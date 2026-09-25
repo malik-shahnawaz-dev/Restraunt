@@ -40,7 +40,7 @@ export function FoodCard({ item, index = 0 }) {
         aria-label={`View ${item.name}`}
       >
         <img
-          src={item.image}
+          src={item.image || '/images/kitchen.jpg'}
           alt={item.name}
           loading="lazy"
           className={`h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.07] ${
@@ -148,7 +148,7 @@ export function CategoryCard({ category, index = 0, onSelect }) {
       aria-label={`Browse ${category.name}`}
     >
       <img
-        src={category.image}
+        src={category.image || '/images/kitchen.jpg'}
         alt=""
         loading="lazy"
         className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-110"

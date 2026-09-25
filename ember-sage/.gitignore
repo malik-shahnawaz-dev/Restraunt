@@ -3,3 +3,9 @@ dist
 shots
 *.log
 .DS_Store
+
+# local database + uploads
+.data/
+uploads/
+.env
+.env.local

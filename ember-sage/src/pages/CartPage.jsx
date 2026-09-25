@@ -10,6 +10,7 @@ import { AnimatePresence } from 'framer-motion'
 import { useCart } from '../context/CartContext.jsx'
 import { useToast } from '../context/ToastContext.jsx'
 import { FREE_DELIVERY_THRESHOLD } from '../data/menu.js'
+import { useData } from '../context/MenuContext.jsx'
 
 export function OrderSummary({ compact = false }) {
   const { totals, coupon } = useCart()
@@ -42,9 +43,9 @@ export function OrderSummary({ compact = false }) {
           <dd className="tabular-nums">${totals.total.toFixed(2)}</dd>
         </div>
       </dl>
-      {totals.subtotal > 0 && totals.subtotal < FREE_DELIVERY_THRESHOLD && (
+      {totals.subtotal > 0 && totals.subtotal < threshold && (
         <p className="mt-4 rounded-xl bg-olive-soft px-3.5 py-2.5 text-[13px] text-olive-dark">
-          Add <strong>${(FREE_DELIVERY_THRESHOLD - totals.subtotal).toFixed(2)}</strong> more for free delivery.
+          Add <strong>${(threshold - totals.subtotal).toFixed(2)}</strong> more for free delivery.
         </p>
       )}
     </div>
@@ -53,7 +54,7 @@ export function OrderSummary({ compact = false }) {
 
 export function CouponField() {
   const [code, setCode] = useState('')
-  const { applyCoupon, removeCoupon, coupon } = useCart()
+  const { applyCoupon, removeCoupon, coupon, offers } = useCart()
   const toast = useToast()
 
   if (coupon) {
@@ -101,8 +102,42 @@ export function CouponField() {
   )
 }
 
+/** Live promo codes managed in Admin → Coupons. */
+function OfferStrip() {
+  const { offers, applyCoupon } = useCart()
+  const toast = useToast()
+  if (!offers?.length) return null
+
+  const apply = async (code) => {
+    const res = await applyCoupon(code)
+    if (res.ok) toast.success('Coupon applied', res.message)
+    else toast.error('Could not apply', res.message)
+  }
+
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {offers.slice(0, 4).map((offer) => (
+        <button
+          key={offer.code}
+          type="button"
+          onClick={() => apply(offer.code)}
+          className="cursor-pointer rounded-full border border-dashed border-clay/40 bg-clay-soft/40 px-3.5 py-1.5 text-[12px] font-semibold text-clay-dark transition hover:border-clay hover:bg-clay-soft"
+        >
+          {offer.code}
+          <span className="ml-1.5 font-normal text-clay-dark/70">
+            {offer.type === 'delivery' ? 'Free delivery' : offer.type === 'percent' ? `${offer.value}% off` : `$${offer.value} off`}
+            {offer.minOrder ? ` over $${offer.minOrder}` : ''}
+          </span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export default function CartPage() {
-  const { items, totals } = useCart()
+  const { items, totals, offers } = useCart()
+  const { settings } = useData()
+  const threshold = settings.freeDeliveryThreshold ?? FREE_DELIVERY_THRESHOLD
   const navigate = useNavigate()
 
   return (
@@ -149,6 +184,7 @@ export default function CartPage() {
 
               <Reveal className="mt-6 max-w-md">
                 <CouponField />
+                <OfferStrip />
               </Reveal>
             </div>
 
@@ -159,7 +195,7 @@ export default function CartPage() {
               </Button>
               <div className="grid grid-cols-2 gap-3 text-[12.5px] text-warm">
                 <p className="flex items-center gap-2 rounded-xl bg-white px-3 py-2.5 shadow-soft">
-                  <Truck size={14} className="text-olive" /> Free over ${FREE_DELIVERY_THRESHOLD}
+                  <Truck size={14} className="text-olive" /> Free over ${threshold}
                 </p>
                 <p className="flex items-center gap-2 rounded-xl bg-white px-3 py-2.5 shadow-soft">
                   <ShieldCheck size={14} className="text-olive" /> Secure checkout

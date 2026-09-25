@@ -4,8 +4,9 @@ import Button from '../components/ui/Button.jsx'
 import { Reveal, SectionHeading } from '../components/ui/Motion.jsx'
 import { AboutPreview, ValueBand } from '../components/home/HomeSections.jsx'
 import { restaurant } from '../data/menu.js'
+import { useData } from '../context/MenuContext.jsx'
 
-const PHILOSOPHY = [
+const PHILOSOPHY_FALLBACK = [
   {
     title: 'Fire & Patience',
     text: 'Charcoal grills, cast-iron sears and slow braises. We let heat and time do the work no shortcut can.',
@@ -21,15 +22,41 @@ const PHILOSOPHY = [
 ]
 
 export default function AboutPage() {
+  const { getContent } = useData()
+  const page = getContent('about.page', {
+    eyebrow: 'About us',
+    title: 'More Than Just a Meal',
+    subtitle: 'Fifteen years of open flames, quiet craft, and a dining room that feels like home — only better.',
+    data: { ctaLabel: 'Order Now', ctaHref: '/menu' },
+  })
+  const chef = getContent('about.chef', {
+    eyebrow: 'The chef',
+    title: 'Amina Rahman, Executive Chef',
+    image: '/images/chef-portrait.jpg',
+    data: {
+      titleEmphasis: 'Executive Chef',
+      imageAlt: 'Executive Chef Amina Rahman in the kitchen',
+      paragraphs: [
+        'Trained in Istanbul and London, Chef Amina returned to Islamabad with a simple obsession: food that tastes of place and time. She built Ember & Sage around a single wood-fired hearth and a menu that changes with the seasons.',
+        '“We don’t chase trends,” she says. “We chase the perfect bite — the one that makes the table go quiet for a second.”',
+      ],
+    },
+  })
+  const philosophy = getContent('about.philosophy', {
+    eyebrow: 'Our philosophy',
+    title: 'Three rules we never break',
+    data: { titleEmphasis: 'never break', items: PHILOSOPHY_FALLBACK },
+  })
+  const stats = getContent('site.stats', { data: { items: restaurant.stats } })
+  const statItems = stats.data?.items?.length ? stats.data.items : restaurant.stats
+  const chefParagraphs = chef.data?.paragraphs?.length ? chef.data.paragraphs : []
+  const philosophyItems = philosophy.data?.items?.length ? philosophy.data.items : PHILOSOPHY_FALLBACK
+
   return (
     <>
-      <PageHeader
-        eyebrow="About us"
-        title="More Than Just a Meal"
-        subtitle="Fifteen years of open flames, quiet craft, and a dining room that feels like home — only better."
-      >
-        <Link to="/menu">
-          <Button size="lg">Order Now</Button>
+      <PageHeader eyebrow={page.eyebrow} title={page.title} subtitle={page.subtitle}>
+        <Link to={page.data?.ctaHref || '/menu'}>
+          <Button size="lg">{page.data?.ctaLabel || 'Order Now'}</Button>
         </Link>
       </PageHeader>
 
@@ -41,8 +68,8 @@ export default function AboutPage() {
           <Reveal>
             <div className="overflow-hidden rounded-panel shadow-lift">
               <img
-                src="/images/chef-portrait.jpg"
-                alt="Executive Chef Amina Rahman in the kitchen"
+                src={chef.image || '/images/chef-portrait.jpg'}
+                alt={chef.data?.imageAlt || 'Executive Chef Amina Rahman in the kitchen'}
                 className="aspect-[4/5] w-full object-cover"
                 loading="lazy"
               />
@@ -67,7 +94,7 @@ export default function AboutPage() {
               </p>
             </Reveal>
             <Reveal delay={0.16} className="mt-8 grid grid-cols-3 gap-4">
-              {restaurant.stats.map((s) => (
+              {statItems.map((s) => (
                 <div key={s.label} className="rounded-2xl border border-cream/10 bg-cream/5 px-4 py-4 text-center">
                   <p className="font-display text-2xl font-medium text-clay">{s.value}</p>
                   <p className="mt-1 text-[10.5px] leading-tight tracking-wide text-cream/50 uppercase">{s.label}</p>
@@ -81,11 +108,16 @@ export default function AboutPage() {
       {/* Philosophy */}
       <section className="mx-auto max-w-[1440px] px-5 py-20 lg:px-10 lg:py-28" aria-labelledby="phil-title">
         <SectionHeading
-          eyebrow="Our philosophy"
-          title={<span id="phil-title">Three rules we <em className="font-normal italic text-clay">never break</em></span>}
+          eyebrow={philosophy.eyebrow}
+          title={
+            <span id="phil-title">
+              {String(philosophy.title || '').replace(philosophy.data?.titleEmphasis || '', '')}
+              {philosophy.data?.titleEmphasis && <em className="font-normal italic text-clay">{philosophy.data.titleEmphasis}</em>}
+            </span>
+          }
         />
         <div className="mt-10 grid gap-5 md:grid-cols-3">
-          {PHILOSOPHY.map((p, i) => (
+          {philosophyItems.map((p, i) => (
             <Reveal key={p.title} delay={i * 0.08}>
               <div className="h-full rounded-card border border-ink/6 bg-white p-7 shadow-soft transition hover:-translate-y-1 hover:shadow-lift">
                 <span className="font-display text-4xl text-clay/30" aria-hidden>
